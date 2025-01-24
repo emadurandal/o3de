@@ -44,6 +44,7 @@ set(FILES
     Tests/Scope.cpp
     Tests/ShaderResourceGroup.h
     Tests/ShaderResourceGroup.cpp
+    Tests/TagRegistryTests.cpp
     Tests/TransientAttachmentPool.h
     Tests/TransientAttachmentPool.cpp
     Tests/ThreadTester.h
@@ -51,6 +52,13 @@ set(FILES
     Tests/ImagePropertyTests.cpp
     Tests/BufferPropertyTests.cpp
     Tests/IntervalMapTests.cpp
+    Tests/MultiDevicePipelineStateTests.cpp
+    Tests/MultiDeviceQueryTests.cpp
+    Tests/MultiDeviceBufferTests.cpp
+    Tests/MultiDeviceImageTests.cpp
+    Tests/MultiDeviceIndirectBufferTests.cpp
+    Tests/MultiDeviceShaderResourceGroupTests.cpp
+    Tests/MultiDeviceDrawPacketTests.cpp
 )
 
 set(SKIP_UNITY_BUILD_INCLUSION_FILES

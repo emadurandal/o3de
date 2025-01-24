@@ -35,7 +35,7 @@ class CAnimAzEntityNode
     struct SAnimState;
 
 public:
-    AZ_CLASS_ALLOCATOR(CAnimAzEntityNode, AZ::SystemAllocator, 0);
+    AZ_CLASS_ALLOCATOR(CAnimAzEntityNode, AZ::SystemAllocator);
     AZ_RTTI(CAnimAzEntityNode, "{28C02702-3498-488C-BF93-B5FC3FECC9F1}", CAnimNode);
 
     CAnimAzEntityNode(const int id);
@@ -51,9 +51,9 @@ public:
     // return AnimParamType::Invalid for this pure virtual for the legacy system
     CAnimParamType GetParamType(unsigned int nIndex) const override;
 
-    void SetPos(float time, const Vec3& pos) override;
-    void SetRotate(float time, const Quat& quat) override;
-    void SetScale(float time, const Vec3& scale) override;
+    void SetPos(float time, const AZ::Vector3& pos) override;
+    void SetRotate(float time, const AZ::Quaternion& quat) override;
+    void SetScale(float time, const AZ::Vector3& scale) override;
 
     Vec3 GetOffsetPosition(const Vec3& position) override;
 

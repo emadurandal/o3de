@@ -16,8 +16,13 @@
 #include <ImGuiBus.h>
 #include <imgui/imgui.h>
 #include <Atom/Utils/ImGuiGpuProfiler.h>
+#include <Atom/Utils/ImGuiMaterialDetails.h>
 #include <Atom/Utils/ImGuiPassTree.h>
+#include <Atom/Utils/ImGuiMaterialDetails.h>
 #include <Atom/Utils/ImGuiTransientAttachmentProfiler.h>
+#include <AtomLyIntegration/AtomImGuiTools/AtomImGuiToolsBus.h>
+#include <AzCore/std/containers/set.h>
+#include <MaterialShaderDetailsController.h>
 #endif
 
 namespace AtomImGuiTools
@@ -26,6 +31,7 @@ namespace AtomImGuiTools
         : public AZ::Component
 #if defined(IMGUI_ENABLED)
         , public ImGui::ImGuiUpdateListenerBus::Handler
+        , public AtomImGuiToolsRequestBus::Handler
 #endif
         , public CrySystemEventBus::Handler
     {
@@ -47,6 +53,9 @@ namespace AtomImGuiTools
         // ImGuiUpdateListenerBus overrides...
         void OnImGuiUpdate() override;
         void OnImGuiMainMenuUpdate() override;
+
+        // AtomImGuiToolsRequestBus::Handler overrides...
+        void ShowMaterialShaderDetailsForEntity(AZ::EntityId entity, bool autoOpenDialog) override;
 #endif
 
         // CrySystemEventBus overrides...
@@ -63,6 +72,13 @@ namespace AtomImGuiTools
 
         AZ::Render::ImGuiTransientAttachmentProfiler m_imguiTransientAttachmentProfiler;
         bool m_showTransientAttachmentProfiler = false;
+
+        AZ::Render::ImGuiMaterialDetails m_imguiMaterialDetails;
+        bool m_showMaterialDetails = false;
+        MaterialShaderDetailsController m_materialDetailsController;
+
+        // switchable render pipelines
+        AZStd::set<AZStd::string> m_switchableRenderPipelines;
 #endif
     };
 

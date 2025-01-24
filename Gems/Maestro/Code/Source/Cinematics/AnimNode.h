@@ -9,10 +9,6 @@
 
 // Description : Base of all Animation Nodes
 
-
-#ifndef CRYINCLUDE_CRYMOVIE_ANIMNODE_H
-#define CRYINCLUDE_CRYMOVIE_ANIMNODE_H
-
 #pragma once
 
 #include "IMovieSystem.h"
@@ -30,7 +26,7 @@ class CAnimNode
     : public IAnimNode
 {
 public:
-    AZ_CLASS_ALLOCATOR(CAnimNode, AZ::SystemAllocator, 0);
+    AZ_CLASS_ALLOCATOR(CAnimNode, AZ::SystemAllocator);
     AZ_RTTI(CAnimNode, "{57736B48-5EE7-4530-8051-657ACC9BA1EE}", IAnimNode);
 
     typedef AZStd::vector<AZStd::intrusive_ptr<IAnimTrack>> AnimTracks;
@@ -62,7 +58,7 @@ public:
     int GetFlags() const override;
     bool AreFlagsSetOnNodeOrAnyParent(EAnimNodeFlags flagsToCheck) const override;
 
-    IMovieSystem*   GetMovieSystem() const override { return gEnv->pMovieSystem; };
+    IMovieSystem* GetMovieSystem() const override;
 
     virtual void OnStart() {}
     void OnReset() override {}
@@ -75,9 +71,9 @@ public:
     //////////////////////////////////////////////////////////////////////////
     // Space position/orientation scale.
     //////////////////////////////////////////////////////////////////////////
-    void SetPos([[maybe_unused]] float time, [[maybe_unused]] const Vec3& pos) override {};
-    void SetRotate([[maybe_unused]] float time, [[maybe_unused]] const Quat& quat) override {};
-    void SetScale([[maybe_unused]] float time, [[maybe_unused]] const Vec3& scale) override {};
+    void SetPos([[maybe_unused]] float time, [[maybe_unused]] const AZ::Vector3& pos) override {};
+    void SetRotate([[maybe_unused]] float time, [[maybe_unused]] const AZ::Quaternion& quat) override {};
+    void SetScale([[maybe_unused]] float time, [[maybe_unused]] const AZ::Vector3& scale) override {};
 
     Vec3 GetPos() override { return Vec3(0, 0, 0); };
     Quat GetRotate() override { return Quat(0, 0, 0, 0); };
@@ -94,11 +90,11 @@ public:
     unsigned int GetParamCount() const override { return 0; };
 
     bool SetParamValue(float time, CAnimParamType param, float val) override;
-    bool SetParamValue(float time, CAnimParamType param, const Vec3& val) override;
-    bool SetParamValue(float time, CAnimParamType param, const Vec4& val) override;
+    bool SetParamValue(float time, CAnimParamType param, const AZ::Vector3& val) override;
+    bool SetParamValue(float time, CAnimParamType param, const AZ::Vector4& val) override;
     bool GetParamValue(float time, CAnimParamType param, float& val) override;
-    bool GetParamValue(float time, CAnimParamType param, Vec3& val) override;
-    bool GetParamValue(float time, CAnimParamType param, Vec4& val) override;
+    bool GetParamValue(float time, CAnimParamType param, AZ::Vector3& val) override;
+    bool GetParamValue(float time, CAnimParamType param, AZ::Vector4& val) override;
 
     void SetTarget([[maybe_unused]] IAnimNode* node) {};
     IAnimNode* GetTarget() const { return 0; };
@@ -176,7 +172,7 @@ protected:
     // sets track animNode pointer to this node and sorts tracks
     void RegisterTrack(IAnimTrack* pTrack);
 
-    CMovieSystem* GetCMovieSystem() const { return (CMovieSystem*)gEnv->pMovieSystem; }
+    CMovieSystem* GetCMovieSystem() const { return static_cast<CMovieSystem*>(m_movieSystem); }
 
     bool NeedToRender() const override { return false; }
 
@@ -203,6 +199,7 @@ protected:
     int m_flags;
     unsigned int m_bIgnoreSetParam : 1; // Internal flags.
     bool m_expanded;
+    IMovieSystem* m_movieSystem;
 
 private:
     void SortTracks();
@@ -213,4 +210,3 @@ private:
     AZStd::mutex m_updateDynamicParamsLock;
 };
 
-#endif // CRYINCLUDE_CRYMOVIE_ANIMNODE_H

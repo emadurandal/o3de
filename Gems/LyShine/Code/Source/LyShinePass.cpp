@@ -40,6 +40,17 @@ namespace LyShine
         Base::ResetInternal();
     }
 
+    void LyShinePass::SetRenderPipeline(AZ::RPI::RenderPipeline* pipeline)
+    {
+        if (pipeline == nullptr)
+        {
+            // The pipeline being set to null means this pass will soon be destroyed. Disconnect from the bus so if a
+            // new LyShinePass is being created to replace it, it will be able to connect.
+            LyShinePassRequestBus::Handler::BusDisconnect();
+        }
+        ParentPass::SetRenderPipeline(pipeline);
+    }
+
     void LyShinePass::BuildInternal()
     {
         AZ::RPI::Scene* scene = GetScene();
@@ -115,6 +126,9 @@ namespace LyShine
         rttChildPass->m_attachmentImage = attachmentImage;
         rttChildPass->m_attachmentImageDependencies = attachmentImageDependencies;
 
+        // Disable by default, the RenderGraph will enable it when render to render target
+        rttChildPass->SetEnabled(false);
+
         AddChild(rttChildPass);
     }
 
@@ -170,7 +184,7 @@ namespace LyShine
             desc.m_imageViewDescriptor = attachmentImage->GetImageView()->GetDescriptor();
             desc.m_loadStoreAction.m_loadAction = AZ::RHI::AttachmentLoadAction::Load;
 
-            frameGraph.UseShaderAttachment(desc, AZ::RHI::ScopeAttachmentAccess::Read);
+            frameGraph.UseShaderAttachment(desc, AZ::RHI::ScopeAttachmentAccess::Read, AZ::RHI::ScopeAttachmentStage::FragmentShader);
         }
     }
 

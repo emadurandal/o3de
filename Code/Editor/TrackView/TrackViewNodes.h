@@ -17,10 +17,10 @@
 #if !defined(Q_MOC_RUN)
 #include <AzCore/Component/Entity.h>
 
+#include "AnimationContext.h"
 #include "TrackViewNode.h"
 #include "TrackViewSequence.h"
 #include "Undo/Undo.h"
-#include "Export/ExportManager.h"
 
 #include <IMovieSystem.h>
 #include <QMap>
@@ -49,6 +49,8 @@ class CTrackViewNodesCtrl
     : public QWidget
     , public ITrackViewSequenceListener
     , public IUndoManagerListener
+    , public IAnimationContextListener
+    , public ITrackViewSequenceManagerListener
 {
     Q_OBJECT
 public:
@@ -108,11 +110,20 @@ public:
     virtual void BeginUndoTransaction() override;
     virtual void EndUndoTransaction() override;
 
+    // IAnimationContextListener
+    void OnSequenceChanged(CTrackViewSequence* pNewSequence) override;
+
+    // ITrackViewSequenceManagerListener
+    void OnSequenceRemoved(CTrackViewSequence* pSequence) override;
+
     // Helper for dialog
     QIcon GetIconForTrack(const CTrackViewTrack* pTrack);
     void ShowNextResult();
 
     void Update();
+
+    static QIcon TrackViewIcon(const CTrackViewTrack* track);
+    static QIcon TrackViewNodeIcon(AnimNodeType type);
 
 protected:
     void paintEvent(QPaintEvent* event) override;
@@ -131,9 +142,6 @@ private:
     void CreateFolder(CTrackViewAnimNode* pGroupNode);
     void EditEvents();
 
-    void ImportFromFBX();
-    CTrackViewTrack* GetTrackViewTrack(const Export::EntityAnimData* pAnimData, CTrackViewTrackBundle trackBundle, const QString& nodeName);
-
     void AddMenuSeperatorConditional(QMenu& menu, bool& bAppended);
     void AddGroupNodeAddItems(struct SContextMenu& contextMenu, CTrackViewAnimNode* pAnimNode);
     int ShowPopupMenuSingleSelection(struct SContextMenu& contextMenu, CTrackViewSequence* pSequence, CTrackViewNode* pNode);
@@ -141,14 +149,11 @@ private:
     int ShowPopupMenu(QPoint point, const CRecord* pItemInfo);
 
     bool FillAddTrackMenu(struct STrackMenuTreeNode& menuAddTrack, const CTrackViewAnimNode* pAnimNode);
-    
+
     void CreateAddTrackMenuRec(QMenu& parent, const QString& name, CTrackViewAnimNode* animNode, struct STrackMenuTreeNode& node, unsigned int& currentId);
-    
+
     void SetPopupMenuLock(QMenu* menu);
     void CreateSetAnimationLayerPopupMenu(QMenu& menuSetLayer, CTrackViewTrack* pTrack) const;
-
-    int GetIconIndexForTrack(const CTrackViewTrack* pTrack) const;
-    int GetIconIndexForNode(AnimNodeType type) const;
 
     void AddNodeRecord(CRecord* pParentRecord, CTrackViewNode* pNode);
     CRecord* AddTrackRecord(CRecord* pParentRecord, CTrackViewTrack* pTrack);
@@ -206,7 +211,6 @@ private:
     std::unordered_map<unsigned int, CAnimParamType> m_menuParamTypeMap;
     std::unordered_map<const CTrackViewNode*, CRecord*> m_nodeToRecordMap;
 
-    QMap<int, QIcon> m_imageList;
     QScopedPointer<Ui::CTrackViewNodesCtrl> ui;
 
     //! Cached map of component icons.

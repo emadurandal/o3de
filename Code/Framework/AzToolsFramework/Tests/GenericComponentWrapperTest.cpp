@@ -9,6 +9,7 @@
 #include <AzCore/Slice/SliceComponent.h>
 #include <AzCore/Serialization/Utils.h>
 #include <AzCore/Settings/SettingsRegistryMergeUtils.h>
+#include <AzCore/UnitTest/TestTypes.h>
 #include <AzCore/UserSettings/UserSettingsComponent.h>
 #include <AzToolsFramework/ToolsComponents/GenericComponentWrapper.h>
 #include <AzToolsFramework/Application/ToolsApplication.h>
@@ -51,7 +52,7 @@ R"DELIMITER(<ObjectStream version="1">
 </ObjectStream>)DELIMITER";
 
 class WrappedEditorComponentTest
-    : public ::testing::Test
+    : public UnitTest::LeakDetectionFixture
 {
 protected:
     void SetUp() override
@@ -64,7 +65,9 @@ protected:
         registry->Set(projectPathKey, (enginePath / "AutomatedTesting").Native());
         AZ::SettingsRegistryMergeUtils::MergeSettingsToRegistry_AddRuntimeFilePaths(*registry);
 
-        m_app.Start(AZ::ComponentApplication::Descriptor());
+        AZ::ComponentApplication::StartupParameters startupParameters;
+        startupParameters.m_loadSettingsRegistry = false;
+        m_app.Start(AZ::ComponentApplication::Descriptor(), startupParameters);
 
         // Without this, the user settings component would attempt to save on finalize/shutdown. Since the file is
         // shared across the whole engine, if multiple tests are run in parallel, the saving could cause a crash 
@@ -127,7 +130,7 @@ TEST_F(WrappedEditorComponentTest, ComponentId_MatchesWrapperId)
     EXPECT_EQ(m_componentFromSlice->GetId(), 11874523501682509824u);
 }
 
-const AZ::Uuid InGameOnlyComponentTypeId = "{1D538623-2052-464F-B0DA-D000E1520333}";
+static constexpr AZ::TypeId InGameOnlyComponentTypeId{ "{1D538623-2052-464F-B0DA-D000E1520333}" };
 class InGameOnlyComponent
     : public AZ::Component
 {
@@ -146,13 +149,13 @@ public:
             {
                 editContext->Class<InGameOnlyComponent>("InGame Only", "")
                     ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
-                    ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC("Game"));
+                    ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC_CE("Game"));
             }
         }
     }
 };
 
-const AZ::Uuid NoneEditorComponentTypeId = "{AE3454BA-D785-4EE2-A55B-A089F2B2916A}";
+static constexpr AZ::Uuid NoneEditorComponentTypeId{ "{AE3454BA-D785-4EE2-A55B-A089F2B2916A}" };
 class NoneEditorComponent
     : public AZ::Component
 {
@@ -171,14 +174,14 @@ public:
             {
                 editContext->Class<NoneEditorComponent>("None Editor", "")
                     ->ClassElement(AZ::Edit::ClassElements::EditorData, "")
-                    ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC("Game"));
+                    ->Attribute(AZ::Edit::Attributes::AppearsInAddComponentMenu, AZ_CRC_CE("Game"));
             }
         }
     }
 };
 
 class FindWrappedComponentsTest
-    : public ::testing::Test
+    : public UnitTest::LeakDetectionFixture
 {
 public:
     void SetUp() override
@@ -190,8 +193,10 @@ public:
         registry->Get(enginePath.Native(), AZ::SettingsRegistryMergeUtils::FilePathKey_EngineRootFolder);
         registry->Set(projectPathKey, (enginePath / "AutomatedTesting").Native());
         AZ::SettingsRegistryMergeUtils::MergeSettingsToRegistry_AddRuntimeFilePaths(*registry);
-        
-        m_app.Start(AzFramework::Application::Descriptor());
+
+        AZ::ComponentApplication::StartupParameters startupParameters;
+        startupParameters.m_loadSettingsRegistry = false;
+        m_app.Start(AzFramework::Application::Descriptor(), startupParameters);
 
         // Without this, the user settings component would attempt to save on finalize/shutdown. Since the file is
         // shared across the whole engine, if multiple tests are run in parallel, the saving could cause a crash 

@@ -14,6 +14,9 @@
 // CryCommon
 #include <CryCommon/Maestro/Types/AnimNodeType.h>
 
+// AzCore
+#include <AzCore/std/sort.h>
+
 // Editor
 #include "TrackView/TrackViewTrack.h"
 #include "TrackView/TrackViewSequence.h"
@@ -555,7 +558,7 @@ void CTrackViewNode::AddNode(CTrackViewNode* pNode)
 void CTrackViewNode::SortNodes()
 {
     // Sort with operator<
-    std::stable_sort(m_childNodes.begin(), m_childNodes.end(),
+    AZStd::stable_sort(m_childNodes.begin(), m_childNodes.end(),
         [&](const std::unique_ptr<CTrackViewNode>& a, const std::unique_ptr<CTrackViewNode>& b) -> bool
         {
             const CTrackViewNode* pA = a.get();
@@ -579,7 +582,6 @@ namespace
         nodeOrder[static_cast<int>(AnimNodeType::Alembic)] = 4;
         nodeOrder[static_cast<int>(AnimNodeType::CVar)] = 6;
         nodeOrder[static_cast<int>(AnimNodeType::ScriptVar)] = 7;
-        nodeOrder[static_cast<int>(AnimNodeType::Material)] = 8;
         nodeOrder[static_cast<int>(AnimNodeType::Event)] = 9;
         nodeOrder[static_cast<int>(AnimNodeType::Layer)] = 10;
         nodeOrder[static_cast<int>(AnimNodeType::Comment)] = 11;
@@ -589,8 +591,7 @@ namespace
         nodeOrder[static_cast<int>(AnimNodeType::ScreenFader)] = 15;
         nodeOrder[static_cast<int>(AnimNodeType::Light)] = 16;
         nodeOrder[static_cast<int>(AnimNodeType::ShadowSetup)] = 17;
-        nodeOrder[static_cast<int>(AnimNodeType::Environment)] = 18;
-        nodeOrder[static_cast<int>(AnimNodeType::Group)] = 19;
+        nodeOrder[static_cast<int>(AnimNodeType::Group)] = 18;
 
         return nodeOrder[static_cast<int>(nodeType)];
     }

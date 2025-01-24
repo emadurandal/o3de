@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <Atom/RPI.Reflect/Configuration.h>
 #include <Atom/RPI.Reflect/GpuQuerySystemDescriptor.h>
 #include <Atom/RPI.Reflect/Image/ImageSystemDescriptor.h>
 
@@ -21,11 +22,11 @@ namespace AZ
         {
             AZ_TYPE_INFO(DynamicDrawSystemDescriptor, "{BC1F1C0A-4A87-4D30-A331-BE8358A23F6D}");
 
-            //! The maxinum size of pool which is used to allocate dynamic buffers for dynamic draw system
-            uint32_t m_dynamicBufferPoolSize = 3 * 16 * 1024 * 1024;
+            //! The maxinum size of pool which is used to allocate dynamic buffers for dynamic draw system per frame
+            uint32_t m_dynamicBufferPoolSize = 16 * 1024 * 1024;
         };
 
-        struct RPISystemDescriptor final
+        struct ATOM_RPI_REFLECT_API RPISystemDescriptor final
         {
             AZ_TYPE_INFO(RPISystemDescriptor, "{96DAC3DA-40D4-4C03-8D6A-3181E843262A}");
             static void Reflect(AZ::ReflectContext* context);

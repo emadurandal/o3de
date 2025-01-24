@@ -20,7 +20,6 @@
 #include "ScriptVarNode.h"
 #include "SceneNode.h"
 #include "StlUtils.h"
-#include "MaterialNode.h"
 #include "EventNode.h"
 #include "LayerNode.h"
 #include "CommentNode.h"
@@ -29,16 +28,19 @@
 #include "ShadowsSetupNode.h"
 #include "SequenceTrack.h"
 #include "AnimNodeGroup.h"
+
 #include <Maestro/Types/AnimNodeType.h>
 #include <Maestro/Types/SequenceType.h>
 #include <Maestro/Types/AnimParamType.h>
 
+#include <AzCore/Serialization/SerializeContext.h>
+
 //////////////////////////////////////////////////////////////////////////
-CAnimSequence::CAnimSequence(IMovieSystem* pMovieSystem, uint32 id, SequenceType sequenceType)
+CAnimSequence::CAnimSequence(uint32 id, SequenceType sequenceType)
     : m_refCount(0)
+    , m_pMovieSystem(AZ::Interface<IMovieSystem>::Get())
 {
     m_nextGenId = 1;
-    m_pMovieSystem = pMovieSystem;
     m_flags = 0;
     m_pParentSequence = nullptr;
     m_timeRange.Set(0, 10);
@@ -55,16 +57,21 @@ CAnimSequence::CAnimSequence(IMovieSystem* pMovieSystem, uint32 id, SequenceType
 
     m_pEventStrings = aznew CAnimStringTable;
     m_expanded = true;
+
+    AZ_Trace("CAnimSequence", "CAnimSequence type %i", static_cast<int>(sequenceType));
 }
 
 //////////////////////////////////////////////////////////////////////////
 CAnimSequence::CAnimSequence()
-    : CAnimSequence((gEnv) ? gEnv->pMovieSystem : nullptr, 0, SequenceType::SequenceComponent)
+    : CAnimSequence(0, SequenceType::SequenceComponent)
 {
+    AZ_Trace("CAnimSequence", "CAnimSequence no args");
 }
 
 CAnimSequence::~CAnimSequence()
 {
+    AZ_Trace("CAnimSequence", "~CAnimSequence");
+
     // clear reference to me from all my nodes
     for (int i = static_cast<int>(m_nodes.size()); --i >= 0;)
     {
@@ -102,19 +109,6 @@ void CAnimSequence::SetName(const char* name)
 
     m_name = name;
     m_pMovieSystem->OnSequenceRenamed(originalName.c_str(), m_name.c_str());
-
-    // the sequence named LIGHT_ANIMATION_SET_NAME is a singleton sequence to hold all light animations.
-    if (m_name == LIGHT_ANIMATION_SET_NAME)
-    {
-        // ensure it stays a singleton. If one already exists, deregister it.
-        if (CLightAnimWrapper::GetLightAnimSet())
-        {
-            CLightAnimWrapper::InvalidateAllNodes();
-            CLightAnimWrapper::SetLightAnimSet(0);
-        }
-
-        CLightAnimWrapper::SetLightAnimSet(this);
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -216,6 +210,7 @@ bool CAnimSequence::AddNode(IAnimNode* animNode)
     if (!found)
     {
         m_nodes.push_back(AZStd::intrusive_ptr<IAnimNode>(animNode));
+        AZ_Trace("CAnimSequence::Animate", "Added %s to m_nodes", animNode->GetAzEntityId().ToString().c_str());
     }
 
     const int nodeId = animNode->GetId();
@@ -248,7 +243,7 @@ bool CAnimSequence::AddNode(IAnimNode* animNode)
             }
         }
     }
-     
+
     if (animNode->NeedToRender())
     {
         AddNodeNeedToRender(animNode);
@@ -295,9 +290,6 @@ IAnimNode* CAnimSequence::CreateNodeInternal(AnimNodeType nodeType, uint32 nNode
         case AnimNodeType::Director:
             animNode = aznew CAnimSceneNode(nNodeId);
             break;
-        case AnimNodeType::Material:
-            animNode = aznew CAnimMaterialNode(nNodeId);
-            break;
         case AnimNodeType::Event:
             animNode = aznew CAnimEventNode(nNodeId);
             break;
@@ -321,7 +313,7 @@ IAnimNode* CAnimSequence::CreateNodeInternal(AnimNodeType nodeType, uint32 nNode
         case AnimNodeType::ScreenFader:
             animNode = aznew CAnimScreenFaderNode(nNodeId);
             break;
-        default:     
+        default:
             m_pMovieSystem->LogUserNotificationMsg("AnimNode cannot be added because it is an unsupported object type.");
             break;
     }
@@ -376,7 +368,7 @@ IAnimNode* CAnimSequence::CreateNode(XmlNodeRef node)
     CAnimNode* newAnimNode = static_cast<CAnimNode*>(pNewNode);
 
     // Make sure de-serializing this node didn't just create an id conflict. This can happen sometimes
-    // when copy/pasting nodes from a different sequence to this one. 
+    // when copy/pasting nodes from a different sequence to this one.
     for (const auto& curNode : m_nodes)
     {
         CAnimNode* animNode = static_cast<CAnimNode*>(curNode.get());
@@ -402,12 +394,12 @@ void CAnimSequence::RemoveNode(IAnimNode* node, bool removeChildRelationships)
     {
         if (node == m_nodes[i].get())
         {
-            m_nodes.erase(m_nodes.begin() + i);
-
             if (node->NeedToRender())
             {
                 RemoveNodeNeedToRender(node);
             }
+
+            m_nodes.erase(m_nodes.begin() + i);
 
             continue;
         }
@@ -651,10 +643,92 @@ void CAnimSequence::StillUpdate()
     }
 }
 
+#if defined(AZ_ENABLE_TRACING)
+namespace
+{
+    AZStd::string GetAnimNodeTypeName(AnimNodeType animNodeType)
+    {
+        AZStd::string typeName;
+        switch (animNodeType)
+        {
+        case AnimNodeType::AzEntity:
+            typeName = "AzEntity";
+            break;
+        case AnimNodeType::Invalid:
+            typeName = "Invalid";
+            break;
+        case AnimNodeType::Entity:
+            typeName = "Entity";
+            break;
+        case AnimNodeType::Director:
+            typeName = "Director";
+            break;
+        case AnimNodeType::CVar:
+            typeName = "CVar";
+            break;
+        case AnimNodeType::ScriptVar:
+            typeName = "ScriptVar";
+            break;
+        case AnimNodeType::Material:
+            typeName = "Material";
+            break;
+        case AnimNodeType::Event:
+            typeName = "Event";
+            break;
+        case AnimNodeType::Group:
+            typeName = "Group";
+            break;
+        case AnimNodeType::Layer:
+            typeName = "Layer";
+            break;
+        case AnimNodeType::Comment:
+            typeName = "Comment";
+            break;
+        case AnimNodeType::RadialBlur:
+            typeName = "RadialBlur";
+            break;
+        case AnimNodeType::ColorCorrection:
+            typeName = "ColorCorrection";
+            break;
+        case AnimNodeType::DepthOfField:
+            typeName = "DepthOfField";
+            break;
+        case AnimNodeType::ScreenFader:
+            typeName = "ScreenFader";
+            break;
+        case AnimNodeType::Light:
+            typeName = "Light";
+            break;
+        case AnimNodeType::ShadowSetup:
+            typeName = "ShadowSetup";
+            break;
+        case AnimNodeType::Alembic:
+            typeName = "Alembic";
+            break;
+        case AnimNodeType::GeomCache:
+            typeName = "GeomCache";
+            break;
+        case AnimNodeType::ScreenDropsSetup:
+            typeName = "ScreenDropsSetup";
+            break;
+        case AnimNodeType::Component:
+            typeName = "Component";
+            break;
+        case AnimNodeType::Num:
+            typeName = "Num";
+            break;
+        default:
+            typeName = "Unknown";
+        }
+        return typeName;
+    }
+} // namespace
+#endif
+
 //////////////////////////////////////////////////////////////////////////
 void CAnimSequence::Animate(const SAnimContext& ec)
 {
-    assert(m_bActive);
+    AZ_Assert(m_bActive, "AnimSequence must be active");
 
     if (GetFlags() & eSeqFlags_LightAnimationSet)
     {
@@ -671,6 +745,23 @@ void CAnimSequence::Animate(const SAnimContext& ec)
     {
         m_activeDirector->Animate(animContext);
     }
+
+#if defined(AZ_ENABLE_TRACING)
+    for (int i = 0; i < m_nodes.size(); ++i)
+    {
+        const IAnimNode* animNode = m_nodes[i].get();
+        const AnimNodeType animNodeType = animNode->GetType();
+        const AZStd::string animNodeTypeName = GetAnimNodeTypeName(animNodeType);
+        if (animNode->GetType() == AnimNodeType::AzEntity)
+        {
+            AZ_Trace("CAnimSequence::Animate", "AnimNode m_nodes[%i] type %s, id %s", i, animNodeTypeName.c_str(), animNode->GetAzEntityId().ToString().c_str());
+        }
+        else
+        {
+            AZ_Trace("CAnimSequence::Animate", "AnimNode m_nodes[%i] type %s", i, animNodeTypeName.c_str());
+        }
+    }
+#endif
 
     for (AnimNodes::iterator it = m_nodes.begin(); it != m_nodes.end(); ++it)
     {
@@ -1306,7 +1397,7 @@ void CAnimSequence::RemoveNodeNeedToRender(IAnimNode* pNode)
 
 //////////////////////////////////////////////////////////////////////////
 void CAnimSequence::SetSequenceEntityId(const AZ::EntityId& sequenceEntityId)
-{ 
+{
     m_sequenceEntityId = sequenceEntityId;
 }
 //////////////////////////////////////////////////////////////////////////

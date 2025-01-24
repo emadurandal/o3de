@@ -35,17 +35,26 @@ namespace O3DE::ProjectManager
         ~NewProjectSettingsScreen() = default;
         ProjectManagerScreen GetScreenEnum() override;
 
+        //! returns the project template path or "" if the template is remote and has not been downloaded
         QString GetProjectTemplatePath();
+
+        bool IsDownloadingTemplate() const;
 
         void NotifyCurrentScreen() override;
 
         void SelectProjectTemplate(int index, bool blockSignals = false);
 
+        AZ::Outcome<void, QString> Validate() const override;
+
+        void ShowDownloadTemplateDialog(const ProjectTemplateInfo& templateInfo = {});
+
+        const ProjectTemplateInfo GetSelectedProjectTemplateInfo() const;
+
     signals:
         void OnTemplateSelectionChanged(int oldIndex, int newIndex);
 
     public slots:
-        void StartTemplateDownload(const QString& templateName);
+        void StartTemplateDownload(const QString& templateName, const QString& destinationPath);
         void HandleDownloadResult(const QString& projectName, bool succeeded);
         void HandleDownloadProgress(const QString& projectName, DownloadController::DownloadObjectType objectType, int bytesDownloaded, int totalBytes);
 
@@ -64,6 +73,7 @@ namespace O3DE::ProjectManager
         QLabel* m_templateDisplayName;
         QLabel* m_templateSummary;
         QPushButton* m_downloadTemplateButton;
+        TemplateButton* m_remoteTemplateButton = nullptr;
         TagContainerWidget* m_templateIncludedGems;
         QVector<ProjectTemplateInfo> m_templates;
         QVector<TemplateButton*> m_templateButtons;

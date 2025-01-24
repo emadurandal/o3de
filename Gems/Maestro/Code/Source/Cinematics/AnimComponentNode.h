@@ -6,10 +6,6 @@
  *
  */
 
-
-#ifndef CRYINCLUDE_CRYMOVIE_ANIMCOMPONENTNODE_H
-#define CRYINCLUDE_CRYMOVIE_ANIMCOMPONENTNODE_H
-
 #pragma once
 
 #include "AnimNode.h"
@@ -23,12 +19,14 @@
  *
  */
 
+struct IMovieSystem;
+
 class CAnimComponentNode
     : public CAnimNode
     , public Maestro::EditorSequenceAgentComponentNotificationBus::Handler
 {
 public:
-    AZ_CLASS_ALLOCATOR(CAnimComponentNode, AZ::SystemAllocator, 0);
+    AZ_CLASS_ALLOCATOR(CAnimComponentNode, AZ::SystemAllocator);
     AZ_RTTI(CAnimComponentNode, "{722F3D0D-7AEB-46B7-BF13-D5C7A828E9BD}", CAnimNode);
 
     CAnimComponentNode(const int id);
@@ -65,9 +63,9 @@ public:
 
     void SetNodeOwner(IAnimNodeOwner* pOwner) override;
 
-    void SetPos(float time, const Vec3& pos) override;
-    void SetRotate(float time, const Quat& quat) override;
-    void SetScale(float time, const Vec3& scale) override;
+    void SetPos(float time, const AZ::Vector3& pos) override;
+    void SetRotate(float time, const AZ::Quaternion& quat) override;
+    void SetScale(float time, const AZ::Vector3& scale) override;
 
     Vec3 GetPos() override;
     Quat GetRotate() override;
@@ -126,6 +124,10 @@ private:
     void ConvertBetweenWorldAndLocalRotation(Quat& rotation, ETransformSpaceConversionDirection conversionDirection) const;
     void ConvertBetweenWorldAndLocalScale(Vec3& scale, ETransformSpaceConversionDirection conversionDirection) const;
 
+    AZ::Vector3 TransformFromWorldToLocalPosition(const AZ::Vector3& position) const;
+    AZ::Quaternion TransformFromWorldToLocalRotation(const AZ::Quaternion& rotation) const;
+    AZ::Vector3 TransformFromWorldToLocalScale(const AZ::Vector3& scale) const;
+
     // Utility function to query the units for a track and set the track multiplier if needed. Returns true if track multiplier was set.
     bool SetTrackMultiplier(IAnimTrack* track) const;
 
@@ -169,8 +171,6 @@ private:
     
     void AddPropertyToParamInfoMap(const CAnimParamType& paramType);
 
-    int m_refCount;     // intrusive_ptr ref counter
-
     AZ::Uuid                                m_componentTypeId;
     AZ::ComponentId                         m_componentId;
 
@@ -181,5 +181,7 @@ private:
     CCharacterTrackAnimator*   m_characterTrackAnimator = nullptr;
 
     bool m_skipComponentAnimationUpdates;
+
+    IMovieSystem* m_movieSystem;
 };
-#endif // CRYINCLUDE_CRYMOVIE_ANIMCOMPONENTNODE_H
+

@@ -12,6 +12,7 @@
 
 #include <AzFramework/Components/CameraBus.h>   // for definition of EditorCameraComponentTypeId
 #include <AzCore/Component/TransformBus.h>
+#include <AzCore/Serialization/SerializeContext.h>
 #include <AzFramework/Components/TransformComponent.h>
 #include <AzCore/Component/ComponentApplicationBus.h>
 #include <Maestro/Bus/SequenceComponentBus.h>
@@ -122,7 +123,7 @@ CAnimComponentNode* CAnimAzEntityNode::GetComponentNodeForComponentWithTypeId(co
 CAnimComponentNode* CAnimAzEntityNode::GetTransformComponentNode() const
 {
     CAnimComponentNode* retTransformNode = GetComponentNodeForComponentWithTypeId(AZ::Uuid(AZ::EditorTransformComponentTypeId));
-    
+
     if (!retTransformNode)
     {
         // if not Editor transform, try run-time transform
@@ -133,7 +134,7 @@ CAnimComponentNode* CAnimAzEntityNode::GetTransformComponentNode() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-void CAnimAzEntityNode::SetPos(float time, const Vec3& pos)
+void CAnimAzEntityNode::SetPos(float time, const AZ::Vector3& pos)
 {
     CAnimComponentNode* transformComponent = GetTransformComponentNode();
     if (transformComponent)
@@ -154,7 +155,7 @@ Vec3 CAnimAzEntityNode::GetPos()
 }
 
 //////////////////////////////////////////////////////////////////////////
-void CAnimAzEntityNode::SetRotate(float time, const Quat& rotation)
+void CAnimAzEntityNode::SetRotate(float time, const AZ::Quaternion& rotation)
 {
     CAnimComponentNode* transformComponent = GetTransformComponentNode();
     if (transformComponent)
@@ -184,7 +185,7 @@ Quat CAnimAzEntityNode::GetRotate(float time)
 }
 
 //////////////////////////////////////////////////////////////////////////
-void CAnimAzEntityNode::SetScale(float time, const Vec3& scale)
+void CAnimAzEntityNode::SetScale(float time, const AZ::Vector3& scale)
 {
     CAnimComponentNode* transformComponent = GetTransformComponentNode();
     if (transformComponent)

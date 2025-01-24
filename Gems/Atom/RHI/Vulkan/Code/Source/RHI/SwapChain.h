@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include <Atom/RHI/SwapChain.h>
+#include <Atom/RHI/DeviceSwapChain.h>
 #include <Atom/RHI.Reflect/SwapChainDescriptor.h>
 #include <AzCore/std/containers/list.h>
 #include <AzCore/std/containers/vector.h>
@@ -27,12 +27,12 @@ namespace AZ
         class CommandQueue;
 
         class SwapChain final
-            : public RHI::SwapChain
+            : public RHI::DeviceSwapChain
         {
-            using Base = RHI::SwapChain;
+            using Base = RHI::DeviceSwapChain;
 
         public:
-            AZ_CLASS_ALLOCATOR(SwapChain, AZ::SystemAllocator, 0);
+            AZ_CLASS_ALLOCATOR(SwapChain, AZ::SystemAllocator);
             AZ_RTTI(SwapChain, "4AE7AE82-BB25-4665-BF79-85F407255B26", Base);
 
             struct FrameContext
@@ -51,7 +51,7 @@ namespace AZ
 
             void QueueBarrier(const VkPipelineStageFlags src, const VkPipelineStageFlags dst, const VkImageMemoryBarrier& imageBarrier);
 
-            void ProcessRecreation() override;
+            bool ProcessRecreation() override;
         private:
             SwapChain() = default;
 
@@ -61,10 +61,10 @@ namespace AZ
             //////////////////////////////////////////////////////////////////////////
 
             //////////////////////////////////////////////////////////////////////
-            // RHI::SwapChain
+            // RHI::DeviceSwapChain
             RHI::ResultCode InitInternal(RHI::Device& device, const RHI::SwapChainDescriptor& descriptor, RHI::SwapChainDimensions* nativeDimensions) override;
             void ShutdownInternal() override;
-            RHI::ResultCode InitImageInternal(const RHI::SwapChain::InitImageRequest& request) override;
+            RHI::ResultCode InitImageInternal(const RHI::DeviceSwapChain::InitImageRequest& request) override;
             RHI::ResultCode ResizeInternal(const RHI::SwapChainDimensions& dimensions, RHI::SwapChainDimensions* nativeDimensions) override;
             uint32_t PresentInternal() override;
             void SetVerticalSyncIntervalInternal(uint32_t previousVsyncInterval) override;
@@ -97,13 +97,11 @@ namespace AZ
 
             //! Destroy the surface.
             void InvalidateSurface();
-            //! Destroy the old swapchain.
-            void InvalidateNativeSwapChain();
-            void InvalidateNativeSwapChainImmediately();
+            //! Destroy the swapchain.
+            void InvalidateNativeSwapChain(VkSwapchainKHR swapchain);
 
             RHI::Ptr<WSISurface> m_surface;
             VkSwapchainKHR m_nativeSwapChain = VK_NULL_HANDLE;
-            VkSwapchainKHR m_oldNativeSwapChain = VK_NULL_HANDLE;
             CommandQueue* m_presentationQueue = nullptr;
             FrameContext m_currentFrameContext;
 

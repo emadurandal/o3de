@@ -6,11 +6,15 @@
 #
 #
 
-set(minimum_supported_toolset 142)
-if(MSVC_TOOLSET_VERSION VERSION_LESS ${minimum_supported_toolset})
-    message(FATAL_ERROR "MSVC toolset ${MSVC_TOOLSET_VERSION} is too old, minimum supported toolset is ${minimum_supported_toolset}")
+get_property(O3DE_SCRIPT_ONLY GLOBAL PROPERTY "O3DE_SCRIPT_ONLY")
+
+if (NOT O3DE_SCRIPT_ONLY)
+    set(minimum_supported_toolset 142)
+    if(MSVC_TOOLSET_VERSION VERSION_LESS ${minimum_supported_toolset})
+        message(FATAL_ERROR "MSVC toolset ${MSVC_TOOLSET_VERSION} is too old, minimum supported toolset is ${minimum_supported_toolset}")
+    endif()
+    unset(minimum_supported_toolset)
 endif()
-unset(minimum_supported_toolset)
 
 include(cmake/Platform/Common/Configurations_common.cmake)
 include(cmake/Platform/Common/MSVC/VisualStudio_common.cmake)
@@ -26,6 +30,7 @@ endif()
 ly_append_configurations_options(
     DEFINES
         _ENABLE_EXTENDED_ALIGNED_STORAGE # Enables support for extended alignment for the MSVC std::aligned_storage class
+        _SILENCE_STDEXT_ARR_ITERS_DEPRECATION_WARNING # Prevents triggering of STL4043 when checked iterators are used in 3rdParty libraries(QT and AWSNativeSDK)
     COMPILATION
         /fp:fast        # allows the compiler to reorder, combine, or simplify floating-point operations to optimize floating-point code for speed and space
         /Gd             # Use _cdecl calling convention for all functions
@@ -41,6 +46,7 @@ ly_append_configurations_options(
         ###################
         /wd4201 # nonstandard extension used: nameless struct/union. This actually became part of the C++11 std, MS has an open issue: https://developercommunity.visualstudio.com/t/warning-level-4-generates-a-bogus-warning-c4201-no/103064
         /wd4324 #  warning C4324: 'std::tuple<...>': structure was padded due to alignment specifier. This warning is triggered whenever a simd type is used with the MSVC std::optional or std::tuple types, which is namespaced into AZStd
+        /wd4251 # Don't warn if a class with dllexport attribute has nonstatic members which don't have the dllexport attribute
 
         ###################
         # Enabled warnings (that are disabled by default from /W4)
@@ -136,6 +142,17 @@ else()
             /DEBUG      # Despite the documentation states /Zi implies /DEBUG, without it, stack traces are not expanded
             /INCREMENTAL:NO
 
+    )
+endif()
+
+set(O3DE_BUILD_WITH_DEBUG_SYMBOLS_RELEASE FALSE CACHE BOOL "Add debug symbols when building in release configuration. (default = FALSE)")
+if(O3DE_BUILD_WITH_DEBUG_SYMBOLS_RELEASE)
+    ly_append_configurations_options(
+        COMPILATION_RELEASE
+            /Od             # Enable debug symbols
+            /Zi             # Generate debugging information (no Edit/Continue)
+        LINK_NON_STATIC_RELEASE
+            /DEBUG          # Generate pdbs
     )
 endif()
 
