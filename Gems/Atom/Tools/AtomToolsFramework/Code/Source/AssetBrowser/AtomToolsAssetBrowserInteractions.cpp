@@ -8,6 +8,7 @@
 
 #include <Atom/RPI.Edit/Common/AssetUtils.h>
 #include <AtomToolsFramework/AssetBrowser/AtomToolsAssetBrowserInteractions.h>
+#include <AtomToolsFramework/Document/AtomToolsDocumentSystemRequestBus.h>
 #include <AtomToolsFramework/Util/Util.h>
 #include <AzCore/Utils/Utils.h>
 #include <AzCore/std/string/wildcard.h>
@@ -49,7 +50,7 @@ namespace AtomToolsFramework
     void AtomToolsAssetBrowserInteractions::AddContextMenuActions(
         QWidget* caller, QMenu* menu, const AssetBrowserEntryVector& entries)
     {
-        AssetBrowserEntry* entry = entries.empty() ? nullptr : entries.front();
+        const AssetBrowserEntry* entry = entries.empty() ? nullptr : entries.front();
         if (!entry)
         {
             return;
@@ -83,19 +84,16 @@ namespace AtomToolsFramework
     void AtomToolsAssetBrowserInteractions::AddContextMenuActionsForSourceEntries(
         [[maybe_unused]] QWidget* caller, QMenu* menu, const AzToolsFramework::AssetBrowser::AssetBrowserEntry* entry)
     {
-        menu->addAction("Duplicate...", [entry]()
+        menu->addAction("Duplicate", [entry]()
             {
-                const auto& duplicateFilePath = GetUniqueDuplicateFilePath(entry->GetFullPath());
-                if (!duplicateFilePath.empty())
+                const auto& duplicateFilePath = GetUniqueFilePath(entry->GetFullPath());
+                if (QFile::copy(entry->GetFullPath().c_str(), duplicateFilePath.c_str()))
                 {
-                    if (QFile::copy(entry->GetFullPath().c_str(), duplicateFilePath.c_str()))
-                    {
-                        QFile::setPermissions(duplicateFilePath.c_str(), QFile::ReadOther | QFile::WriteOther);
+                    QFile::setPermissions(duplicateFilePath.c_str(), QFile::ReadOther | QFile::WriteOther);
 
-                        // Auto add file to source control
-                        AzToolsFramework::SourceControlCommandBus::Broadcast(&AzToolsFramework::SourceControlCommandBus::Events::RequestEdit,
-                            duplicateFilePath.c_str(), true, [](bool, const AzToolsFramework::SourceControlFileInfo&) {});
-                    }
+                    // Auto add file to source control
+                    AzToolsFramework::SourceControlCommandBus::Broadcast(&AzToolsFramework::SourceControlCommandBus::Events::RequestEdit,
+                        duplicateFilePath.c_str(), true, [](bool, const AzToolsFramework::SourceControlFileInfo&) {});
                 }
             });
 

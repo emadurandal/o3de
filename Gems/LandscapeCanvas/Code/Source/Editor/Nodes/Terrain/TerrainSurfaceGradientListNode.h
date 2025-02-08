@@ -26,7 +26,7 @@ namespace LandscapeCanvas
         : public BaseNode
     {
     public:
-        AZ_CLASS_ALLOCATOR(TerrainSurfaceGradientListNode, AZ::SystemAllocator, 0);
+        AZ_CLASS_ALLOCATOR(TerrainSurfaceGradientListNode, AZ::SystemAllocator);
         AZ_RTTI(TerrainSurfaceGradientListNode, "{9414099F-A3BB-432E-86B8-3FB2C44D2529}", BaseNode);
 
         static void Reflect(AZ::ReflectContext* context);
@@ -36,7 +36,7 @@ namespace LandscapeCanvas
 
         const BaseNodeType GetBaseNodeType() const override;
 
-        static const QString TITLE;
+        static const char* TITLE;
         const char* GetTitle() const override;
 
     protected:

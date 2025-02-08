@@ -89,10 +89,12 @@ def TerrainExtenderNodes_ComponentEntitySync():
     # The heightfield colliders are a special case where they add each-other to make
     # the workflow easier since they depend on each-other
     extenders = {
+        'TerrainMacroMaterialNode': ['Terrain Macro Material'],
         'PhysXHeightfieldColliderNode': ['PhysX Heightfield Collider', 'Terrain Physics Heightfield Collider'],
         'TerrainPhysicsHeightfieldColliderNode': ['Terrain Physics Heightfield Collider', 'PhysX Heightfield Collider'],
         'TerrainSurfaceGradientListNode': ['Terrain Surface Gradient List'],
         'TerrainHeightGradientListNode': ['Terrain Height Gradient List'],
+        'TerrainSurfaceMaterialsListNode': ['Terrain Surface Materials List'],
     }
 
     # Retrieve a mapping of the TypeIds for all the components
@@ -123,7 +125,6 @@ def TerrainExtenderNodes_ComponentEntitySync():
             extenderNode = landscapecanvas.LandscapeCanvasNodeFactoryRequestBus(bus.Broadcast,
                                                                                 'CreateNodeForTypeName', newGraph,
                                                                                 extenderName)
-            graph.GraphControllerRequestBus(bus.Event, 'AddNode', newGraphId, extenderNode, nodePosition)
             graph.GraphControllerRequestBus(bus.Event, 'WrapNode', newGraphId, areaNode, extenderNode)
 
             # Check that the appropriate Component(s) were added when the extender node was added

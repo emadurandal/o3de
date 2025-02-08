@@ -22,7 +22,7 @@ namespace LandscapeCanvas
     class TerrainLayerSpawnerNode : public BaseNode
     {
     public:
-        AZ_CLASS_ALLOCATOR(TerrainLayerSpawnerNode, AZ::SystemAllocator, 0);
+        AZ_CLASS_ALLOCATOR(TerrainLayerSpawnerNode, AZ::SystemAllocator);
         AZ_RTTI(TerrainLayerSpawnerNode, "{C901635B-4EC8-40A1-8D67-4138C7567C3E}", BaseNode);
 
         static void Reflect(AZ::ReflectContext* context);
@@ -30,7 +30,7 @@ namespace LandscapeCanvas
         TerrainLayerSpawnerNode() = default;
         explicit TerrainLayerSpawnerNode(GraphModel::GraphPtr graph);
 
-        static const QString TITLE;
+        static const char* TITLE;
         const char* GetTitle() const override;
         const char* GetSubTitle() const override;
         GraphModel::NodeType GetNodeType() const override;
