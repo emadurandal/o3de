@@ -5,12 +5,16 @@
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  *
  */
+
 #include <IMovieSystem.h>
 #include <Range.h>
 #include <AnimKey.h>
 #include <Maestro/Types/AssetBlendKey.h>
 
 #include "AnimSerializer.h"
+
+#include <AzCore/Serialization/SerializeContext.h>
+
 
 void AnimSerializer::ReflectAnimTypes(AZ::ReflectContext* context)
 {

@@ -11,6 +11,8 @@
 #include <AzCore/std/algorithm.h>
 #include <AzCore/std/allocator_traits.h>
 #include <AzCore/std/createdestroy.h>
+#include <AzCore/std/ranges/common_view.h>
+#include <AzCore/std/ranges/as_rvalue_view.h>
 #include <AzCore/std/typetraits/alignment_of.h>
 #include <AzCore/std/typetraits/is_integral.h>
 
@@ -45,8 +47,6 @@ namespace AZStd
 
         typedef T&                                      reference;
         typedef const T&                                const_reference;
-        typedef typename Allocator::difference_type     difference_type;
-        typedef typename Allocator::size_type           size_type;
 
         typedef pointer                                 iterator_impl;
         typedef const_pointer                           const_iterator_impl;
@@ -57,6 +57,8 @@ namespace AZStd
         typedef iterator_impl                           iterator;
         typedef const_iterator_impl                     const_iterator;
 #endif
+        using difference_type = iter_difference_t<iterator>;
+        using size_type = make_unsigned_t<difference_type>;
         typedef AZStd::reverse_iterator<iterator>       reverse_iterator;
         typedef AZStd::reverse_iterator<const_iterator> const_reverse_iterator;
         typedef T                                       value_type;
@@ -94,7 +96,7 @@ namespace AZStd
             if (numElements > 0)
             {
                 size_type byteSize = sizeof(node_type) * numElements;
-                m_start = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                m_start = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
                 m_end = m_start + numElements;
                 Internal::construct<pointer, value_type, false>::range(m_start, m_end);
                 m_last = m_end;
@@ -109,7 +111,7 @@ namespace AZStd
             if (numElements > 0)
             {
                 size_type byteSize = sizeof(node_type) * numElements;
-                m_start = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                m_start = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
                 m_end   = m_start + numElements;
                 AZStd::uninitialized_fill_n(m_start, numElements, value);
                 m_last  = m_end;
@@ -124,7 +126,7 @@ namespace AZStd
             if (numElements > 0)
             {
                 size_type byteSize = sizeof(node_type) * numElements;
-                m_start = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                m_start = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
                 m_end   = m_start + numElements;
                 AZStd::uninitialized_fill_n(m_start, numElements, value);
                 m_last  = m_end;
@@ -158,7 +160,7 @@ namespace AZStd
             size_type byteSize = sizeof(node_type) * (rhs.m_last - rhs.m_start);
             if (byteSize)
             {
-                m_start = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                m_start = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
                 m_last  = AZStd::uninitialized_copy(rhs.m_start, rhs.m_last, m_start, is_trivially_copy_constructible<value_type>());
             }
             else
@@ -212,7 +214,7 @@ namespace AZStd
                     // Call destructor if we need to.
                     Internal::destroy<pointer>::range(m_start, m_last);
                     // Free memory if we need to.
-                    deallocate_memory(typename allocator_type::allow_memory_leaks(), 0);
+                    deallocate_memory(0);
                 }
 #ifdef AZSTD_HAS_CHECKED_ITERATORS
                 swap_all((this_type&)rhs);
@@ -305,11 +307,15 @@ namespace AZStd
             insert_range(end(), AZStd::forward<R>(rg));
         }
 
+        inline iterator insert(AZStd::nullptr_t, value_type&&) = delete;
         inline iterator insert(const_iterator pos, value_type&& value)
         {
             return emplace(pos, AZStd::move(value));
         }
 
+
+        template<class... Args>
+        inline iterator emplace(AZStd::nullptr_t, Args&&... ) = delete;
         template<class ... Args>
         inline iterator emplace(const_iterator pos, Args&& ... args)
         {
@@ -333,7 +339,7 @@ namespace AZStd
                 // Call destructor if we need to.
                 Internal::destroy<pointer>::range(m_start, m_last);
                 // Free memory if we need to.
-                deallocate_memory(typename allocator_type::allow_memory_leaks(), 0);
+                deallocate_memory(0);
             }
         }
 
@@ -349,22 +355,6 @@ namespace AZStd
 #endif
             size_type newSize = rhs.m_last - rhs.m_start;
             size_type capacity = m_end - m_start;
-            size_type expandedSize = 0;
-
-            // if we have an allocated block and we need more memory, try to expand first!
-            if (m_start && capacity < newSize)
-            {
-                expandedSize = m_allocator.resize(m_start, newSize * sizeof(node_type));
-                if (expandedSize % sizeof(node_type) == 0)
-                {
-                    size_type expandedCapacity = expandedSize / sizeof(node_type);
-                    if (capacity < expandedCapacity)
-                    {
-                        capacity = expandedCapacity;
-                        m_end = m_start + expandedCapacity;
-                    }
-                }
-            }
 
             if (newSize > capacity)
             {
@@ -374,12 +364,12 @@ namespace AZStd
                     // Destroy current vector.
                     Internal::destroy<pointer>::range(m_start, m_last);
                     // Free memory if we need to.
-                    deallocate_memory(typename allocator_type::allow_memory_leaks(), expandedSize);
+                    deallocate_memory(0);
                 }
 
                 // allocate and copy new
                 size_type byteSize = sizeof(node_type) * newSize;
-                m_start = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                m_start = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
                 m_last  = AZStd::uninitialized_copy(rhs.m_start, rhs.m_last, m_start, is_trivially_copy_constructible<value_type>());
                 m_end   = m_last;
             }
@@ -405,7 +395,7 @@ namespace AZStd
                             // Destroy the rest.
                             Internal::destroy<pointer>::range(m_start, m_last);
                             // Free memory if we need to.
-                            deallocate_memory(typename allocator_type::allow_memory_leaks(), expandedSize);
+                            deallocate_memory(0);
 
                             m_start = 0;
                             m_end = 0;
@@ -431,26 +421,12 @@ namespace AZStd
         void reserve(size_type numElements)
         {
             size_type capacity = m_end - m_start;
-            size_type expandedSize = 0;
-            // if we have an allocated block and we need more memory, try to expand first!
-            if (m_start && capacity < numElements)
-            {
-                expandedSize = m_allocator.resize(m_start, numElements * sizeof(node_type));
-                if (expandedSize % sizeof(node_type) == 0) // we need exact size to be able to compute the size on free
-                {
-                    size_type expandedCapacity = expandedSize / sizeof(node_type);
-                    if (expandedCapacity >= numElements)
-                    {
-                        m_end = m_start + expandedCapacity;
-                        return;
-                    }
-                }
-            }
             if (numElements > capacity)
             {
                 // need more capacity - reallocate
                 size_type byteSize = sizeof(node_type) * numElements;
-                pointer newStart = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                // TODO: here we can use reallocate, if possible, reallocate will extend the current allocation
+                pointer newStart = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
                 pointer newLast = AZStd::uninitialized_move(m_start, m_last, newStart);
 
                 // Destroy old array
@@ -459,7 +435,7 @@ namespace AZStd
                     // Call destructor if we need to.
                     Internal::destroy<pointer>::range(m_start, m_last);
                     // Free memory (if needed).
-                    deallocate_memory(typename allocator_type::allow_memory_leaks(), expandedSize);
+                    deallocate_memory(0);
                 }
 
 #ifdef AZSTD_HAS_CHECKED_ITERATORS
@@ -628,11 +604,13 @@ namespace AZStd
         {
             if constexpr (is_lvalue_reference_v<R>)
             {
-                assign_iter(ranges::begin(rg), ranges::end(rg), false_type{});
+                auto rangeView = AZStd::forward<R>(rg) | views::common;
+                assign_iter(ranges::begin(rangeView), ranges::end(rangeView), false_type{});
             }
             else
             {
-                assign_iter(make_move_iterator(ranges::begin(rg)), make_move_iterator(ranges::end(rg)), false_type{});
+                auto rangeView = AZStd::forward<R>(rg) | views::as_rvalue | views::common;
+                assign_iter(ranges::begin(rangeView), ranges::end(rangeView), false_type{});
             }
         }
 
@@ -641,6 +619,7 @@ namespace AZStd
             assign(iList.begin(), iList.end());
         }
 
+        inline iterator insert(AZStd::nullptr_t, const_reference) = delete;
         inline iterator insert(const_iterator insertPos, const_reference value)
         {
 #ifdef AZSTD_HAS_CHECKED_ITERATORS
@@ -664,6 +643,7 @@ namespace AZStd
             return iterator(AZSTD_POINTER_ITERATOR_PARAMS(m_start)) + offset;
         }
 
+        iterator insert(AZStd::nullptr_t, size_type, const_reference) = delete;
         iterator insert(const_iterator insertPos, size_type numElements, const_reference value)
         {
             if (numElements == 0)
@@ -689,22 +669,6 @@ namespace AZStd
             size_type capacity   = m_end - m_start;
             size_type size       = m_last - m_start;
             size_type newSize    = size + numElements;
-            size_type expandedSize = 0;
-
-            // if we have an allocated block and we need more memory, try to expand first!
-            if (m_start && capacity < newSize)
-            {
-                expandedSize = m_allocator.resize(m_start, newSize * sizeof(node_type));
-                if (expandedSize % sizeof(node_type) == 0)
-                {
-                    size_type expandedCapacity = expandedSize / sizeof(node_type);
-                    if (capacity < expandedCapacity)
-                    {
-                        capacity = expandedCapacity;
-                        m_end = m_start + expandedCapacity;
-                    }
-                }
-            }
 
             if (capacity < newSize)
             {
@@ -718,7 +682,7 @@ namespace AZStd
 
                 size_type byteSize = capacity * sizeof(node_type);
 
-                pointer newStart = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                pointer newStart = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
                 // Copy the elements before insert position.
                 pointer newLast = AZStd::uninitialized_move(m_start, insertPosPtr, newStart);
                 // add new data
@@ -734,7 +698,7 @@ namespace AZStd
                     // Call destructor if we need to.
                     Internal::destroy<pointer>::range(m_start, m_last);
                     // Free memory (if needed).
-                    deallocate_memory(typename allocator_type::allow_memory_leaks(), expandedSize);
+                    deallocate_memory(0);
                 }
 #ifdef AZSTD_HAS_CHECKED_ITERATORS
                 orphan_all();
@@ -824,29 +788,37 @@ namespace AZStd
         }
 
         template<class InputIterator>
+        iterator insert(AZStd::nullptr_t, InputIterator, InputIterator) = delete;
+        template<class InputIterator>
         iterator insert(const_iterator insertPos, InputIterator first, InputIterator last)
         {
             return insert_impl(insertPos, first, last, is_integral<InputIterator>());
         }
 
         template<class R>
+        auto insert_range(AZStd::nullptr_t, R&&) -> enable_if_t<Internal::container_compatible_range<R, value_type>, iterator> = delete;
+        template<class R>
         auto insert_range(const_iterator insertPos, R&& rg) -> enable_if_t<Internal::container_compatible_range<R, value_type>, iterator>
         {
             if constexpr (is_lvalue_reference_v<R>)
             {
-                return insert_impl(insertPos, ranges::begin(rg), ranges::end(rg), false_type{});
+                auto rangeView = AZStd::forward<R>(rg) | views::common;
+                return insert_impl(insertPos, ranges::begin(rangeView), ranges::end(rangeView), false_type{});
             }
             else
             {
-                return insert_impl(insertPos, make_move_iterator(ranges::begin(rg)), make_move_iterator(ranges::end(rg)), false_type{});
+                auto rangeView = AZStd::forward<R>(rg) | views::as_rvalue | views::common;
+                return insert_impl(insertPos, ranges::begin(rangeView), ranges::end(rangeView), false_type{});
             }
         }
 
+        iterator insert(AZStd::nullptr_t, initializer_list<T>) = delete;
         iterator insert(const_iterator insertPos, initializer_list<T> ilist)
         {
             return insert(insertPos, ilist.begin(), ilist.end());
         }
 
+        inline iterator erase(AZStd::nullptr_t) = delete;
         inline iterator erase(const_iterator elementIter)
         {
 #ifdef AZSTD_HAS_CHECKED_ITERATORS
@@ -864,6 +836,8 @@ namespace AZStd
             return iterator(AZSTD_POINTER_ITERATOR_PARAMS(m_start)) + offset;
         }
 
+        inline iterator erase(AZStd::nullptr_t, const_iterator) = delete;
+        inline iterator erase(const_iterator, AZStd::nullptr_t) = delete;
         inline iterator erase(const_iterator first, const_iterator last)
         {
 #ifdef AZSTD_HAS_CHECKED_ITERATORS
@@ -953,13 +927,13 @@ namespace AZStd
 
                     size_type byteSize = sizeof(node_type) * size;
 
-                    pointer newStart = reinterpret_cast<pointer>(newAllocator.allocate(byteSize, alignment_of<node_type>::value));
+                    pointer newStart = reinterpret_cast<pointer>(static_cast<void*>(newAllocator.allocate(byteSize, alignof(node_type))));
                     pointer newLast = AZStd::uninitialized_move(m_start, m_last, newStart);
 
                     // destroy objects
                     Internal::destroy<pointer>::range(m_start, m_last);
                     // Free memory (if needed).
-                    deallocate_memory(typename allocator_type::allow_memory_leaks(), 0);
+                    deallocate_memory(0);
 
                     m_start = newStart;
                     m_last  = newLast;
@@ -1031,22 +1005,7 @@ namespace AZStd
         {
             // sets the new capacity of the vector, can be smaller than size()
             size_type capacity = m_end - m_start;
-            size_type expandedSize = 0;
 
-            // if we have an allocated block and we need more memory, try to expand first!
-            if (m_start && capacity < numElements)
-            {
-                expandedSize = m_allocator.resize(m_start, numElements * sizeof(node_type));
-                if (expandedSize % sizeof(node_type) == 0)
-                {
-                    size_type expandedCapacity = expandedSize / sizeof(node_type);
-                    if (expandedCapacity >= numElements)
-                    {
-                        m_end = m_start + expandedCapacity;
-                        return;
-                    }
-                }
-            }
             if (capacity != numElements)
             {
                 pointer newStart;
@@ -1060,7 +1019,8 @@ namespace AZStd
                     // need more capacity - reallocate
                     size_type byteSize = sizeof(node_type) * numElements;
 
-                    newStart = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                    // TODO: here we can use reallocate, if possible, reallocate will extend the current allocation
+                    newStart = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
 
                     if (numMoved > 0)
                     {
@@ -1083,7 +1043,7 @@ namespace AZStd
                     // Call destructor if we need to.
                     Internal::destroy<pointer>::range(m_start, m_last);
                     // Free memory (if needed).
-                    deallocate_memory(typename allocator_type::allow_memory_leaks(), expandedSize);
+                    deallocate_memory(0);
                 }
 
 #ifdef AZSTD_HAS_CHECKED_ITERATORS
@@ -1099,14 +1059,10 @@ namespace AZStd
     private:
 
         //#pragma region Deallocate memory specializations
-        AZ_FORCE_INLINE void    deallocate_memory(const true_type& /* allocator::allow_memory_leaks */, size_type /*expandedSize*/)
-        {
-        }
-
-        AZ_FORCE_INLINE void    deallocate_memory(const false_type& /* !allocator::allow_memory_leaks */, size_type expandedSize)
+        AZ_FORCE_INLINE void    deallocate_memory(size_type expandedSize)
         {
             size_type byteSize = (expandedSize == 0) ? (sizeof(node_type) * (m_end - m_start)) : expandedSize;
-            m_allocator.deallocate(m_start, byteSize, alignment_of<node_type>::value);
+            m_allocator.deallocate(m_start, byteSize, alignof(node_type));
         }
         //#pragma endregion
 
@@ -1150,7 +1106,7 @@ namespace AZStd
                 pointer insertPosPtr = const_cast<pointer>(insertPos);
 #endif
 
-                size_type numElements = distance(first, last);
+                difference_type numElements = distance(first, last);
                 if (numElements == 0)
                 {
                     return AZStd::ranges::next(begin(), offset);
@@ -1160,22 +1116,6 @@ namespace AZStd
                 size_type capacity = m_end - m_start;
                 size_type size = m_last - m_start;
                 size_type newSize = size + numElements;
-                size_type expandedSize = 0;
-
-                // if we have an allocated block and we need more memory, try to expand first!
-                if (m_start && capacity < newSize)
-                {
-                    expandedSize = m_allocator.resize(m_start, newSize * sizeof(node_type));
-                    if (expandedSize % sizeof(node_type) == 0) // make sure it's the exact number of nodes otherwise we can't compute the size on free
-                    {
-                        size_type expandedCapacity = expandedSize / sizeof(node_type);
-                        if (capacity < expandedCapacity)
-                        {
-                            capacity = expandedCapacity;
-                            m_end = m_start + expandedCapacity;
-                        }
-                    }
-                }
 
                 if (capacity < newSize)
                 {
@@ -1190,7 +1130,7 @@ namespace AZStd
 
                     size_type byteSize = capacity * sizeof(node_type);
 
-                    pointer newStart = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+                    pointer newStart = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
                     // Copy the elements before insert position.
                     pointer newLast = AZStd::uninitialized_move(m_start, insertPosPtr, newStart);
                     // add new data (just copy no move)
@@ -1204,7 +1144,7 @@ namespace AZStd
                         // Call destructor if we need to.
                         Internal::destroy<pointer>::range(m_start, m_last);
                         // Free memory (if needed).
-                        deallocate_memory(typename allocator_type::allow_memory_leaks(), expandedSize);
+                        deallocate_memory(0);
                     }
 
 #ifdef AZSTD_HAS_CHECKED_ITERATORS
@@ -1215,13 +1155,13 @@ namespace AZStd
                     m_last = newLast;
                     m_end = m_start + capacity;
                 }
-                else if (size_type(m_last - insertPosPtr) < numElements)
+                else if (m_last - insertPosPtr < numElements)
                 {
                     // Copy the elements after insert position.
                     pointer newLast = AZStd::uninitialized_move(insertPosPtr, m_last, insertPosPtr + numElements);
 
                     // Number of elements we can assign.
-                    size_type numInitializedToFill = size_type(m_last - insertPosPtr);
+                    auto numInitializedToFill = static_cast<iter_difference_t<Iterator>>(m_last - insertPosPtr);
 
                     // get last iterator to fill
                     Iterator lastToAssign = first;
@@ -1285,7 +1225,7 @@ namespace AZStd
             // ok so we did not really mean iterators when the called this function.
             size_type byteSize = sizeof(node_type) * numElements;
 
-            m_start = reinterpret_cast<pointer>(m_allocator.allocate(byteSize, alignment_of<node_type>::value));
+            m_start = reinterpret_cast<pointer>(static_cast<void*>(m_allocator.allocate(byteSize, alignof(node_type))));
             m_end   = m_start + numElements;
             AZStd::uninitialized_fill_n(m_start, numElements, value);
             m_last  = m_end;
@@ -1373,7 +1313,7 @@ namespace AZStd
     template <class T, class Allocator>
     AZ_FORCE_INLINE bool operator==(const vector<T, Allocator>& a, const vector<T, Allocator>& b)
     {
-        return (a.size() == b.size() && equal(a.begin(), a.end(), b.begin()));
+        return (a.size() == b.size() && AZStd::equal(a.begin(), a.end(), b.begin(), b.end()));
     }
 
     template <class T, class Allocator>
