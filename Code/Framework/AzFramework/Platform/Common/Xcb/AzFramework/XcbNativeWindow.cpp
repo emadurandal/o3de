@@ -48,7 +48,7 @@ namespace AzFramework
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    void XcbNativeWindow::InitWindow(const AZStd::string& title, const WindowGeometry& geometry, const WindowStyleMasks& styleMasks)
+    void XcbNativeWindow::InitWindowInternal(const AZStd::string& title, const WindowGeometry& geometry, const WindowStyleMasks& styleMasks)
     {
         // Get the parent window
         const xcb_setup_t* xcbSetup = xcb_get_setup(m_xcbConnection);
@@ -272,14 +272,23 @@ namespace AzFramework
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
-    void XcbNativeWindow::ResizeClientArea(WindowSize clientAreaSize)
+    void XcbNativeWindow::ResizeClientArea(WindowSize clientAreaSize, const WindowPosOptions& options)
     {
         const uint32_t values[] = { clientAreaSize.m_width, clientAreaSize.m_height };
-
+        
+        if (m_activated)
+        {
+            xcb_unmap_window(m_xcbConnection, m_xcbWindow);
+        }
         xcb_configure_window(m_xcbConnection, m_xcbWindow, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
-
-        m_width = clientAreaSize.m_width;
-        m_height = clientAreaSize.m_height;
+        
+        if (m_activated)
+        {
+            xcb_map_window(m_xcbConnection, m_xcbWindow);
+            xcb_flush(m_xcbConnection);
+        }
+        //Notify the RHI to rebuild swapchain and swapchain images after updating the surface
+        WindowSizeChanged(clientAreaSize.m_width, clientAreaSize.m_height);
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////

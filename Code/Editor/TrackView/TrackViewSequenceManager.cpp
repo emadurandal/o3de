@@ -19,14 +19,15 @@
 #include <CryCommon/Maestro/Bus/EditorSequenceComponentBus.h>
 #include <CryCommon/Maestro/Types/SequenceType.h>
 
+// AzCore
+#include <AzCore/std/sort.h>
+
+
 // Editor
 #include "AnimationContext.h"
 #include "GameEngine.h"
-#include "Include/IObjectManager.h"
-#include "Objects/ObjectManager.h"
 
 
-////////////////////////////////////////////////////////////////////////////
 CTrackViewSequenceManager::CTrackViewSequenceManager()
 {
     GetIEditor()->RegisterNotifyListener(this);
@@ -34,7 +35,6 @@ CTrackViewSequenceManager::CTrackViewSequenceManager()
     AZ::EntitySystemBus::Handler::BusConnect();
 }
 
-////////////////////////////////////////////////////////////////////////////
 CTrackViewSequenceManager::~CTrackViewSequenceManager()
 {
     AZ::EntitySystemBus::Handler::BusDisconnect();
@@ -42,7 +42,6 @@ CTrackViewSequenceManager::~CTrackViewSequenceManager()
     GetIEditor()->UnregisterNotifyListener(this);
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::OnEditorNotifyEvent(EEditorNotifyEvent event)
 {
     switch (event)
@@ -68,7 +67,6 @@ void CTrackViewSequenceManager::OnEditorNotifyEvent(EEditorNotifyEvent event)
     }   
 }
 
-////////////////////////////////////////////////////////////////////////////
 CTrackViewSequence* CTrackViewSequenceManager::GetSequenceByName(QString name) const
 {
     for (auto iter = m_sequences.begin(); iter != m_sequences.end(); ++iter)
@@ -84,7 +82,6 @@ CTrackViewSequence* CTrackViewSequenceManager::GetSequenceByName(QString name) c
     return nullptr;
 }
 
-////////////////////////////////////////////////////////////////////////////
 CTrackViewSequence* CTrackViewSequenceManager::GetSequenceByEntityId(const AZ::EntityId& entityId) const
 {
     for (auto iter = m_sequences.begin(); iter != m_sequences.end(); ++iter)
@@ -100,7 +97,6 @@ CTrackViewSequence* CTrackViewSequenceManager::GetSequenceByEntityId(const AZ::E
     return nullptr;
 }
 
-////////////////////////////////////////////////////////////////////////////
 CTrackViewSequence* CTrackViewSequenceManager::GetSequenceByAnimSequence(IAnimSequence* pAnimSequence) const
 {
     for (auto iter = m_sequences.begin(); iter != m_sequences.end(); ++iter)
@@ -116,7 +112,6 @@ CTrackViewSequence* CTrackViewSequenceManager::GetSequenceByAnimSequence(IAnimSe
     return nullptr;
 }
 
-////////////////////////////////////////////////////////////////////////////
 CTrackViewSequence* CTrackViewSequenceManager::GetSequenceByIndex(unsigned int index) const
 {
     if (index >= m_sequences.size())
@@ -127,7 +122,6 @@ CTrackViewSequence* CTrackViewSequenceManager::GetSequenceByIndex(unsigned int i
     return m_sequences[index].get();
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::CreateSequence(QString name, [[maybe_unused]] SequenceType sequenceType)
 {
     CGameEngine* pGameEngine = GetIEditor()->GetGameEngine();
@@ -151,12 +145,13 @@ void CTrackViewSequenceManager::CreateSequence(QString name, [[maybe_unused]] Se
     AzToolsFramework::ToolsApplicationRequests::Bus::BroadcastResult(selectedEntities, &AzToolsFramework::ToolsApplicationRequests::Bus::Events::GetSelectedEntities);
 
     AZ::EntityId newEntityId;   // initialized with InvalidEntityId
-    EBUS_EVENT_RESULT(newEntityId, AzToolsFramework::EditorRequests::Bus, CreateNewEntity, AZ::EntityId());
+    AzToolsFramework::EditorRequests::Bus::BroadcastResult(
+        newEntityId, &AzToolsFramework::EditorRequests::Bus::Events::CreateNewEntity, AZ::EntityId());
     if (newEntityId.IsValid())
     {
         // set the entity name
         AZ::Entity* entity = nullptr;
-        EBUS_EVENT_RESULT(entity, AZ::ComponentApplicationBus, FindEntity, newEntityId);
+        AZ::ComponentApplicationBus::BroadcastResult(entity, &AZ::ComponentApplicationBus::Events::FindEntity, newEntityId);
         if (entity)
         {
             entity->SetName(static_cast<const char*>(name.toUtf8().data()));
@@ -165,7 +160,7 @@ void CTrackViewSequenceManager::CreateSequence(QString name, [[maybe_unused]] Se
         // add the SequenceComponent. The SequenceComponent's Init() method will call OnCreateSequenceObject() which will actually create
         // the sequence and connect it
         // #TODO LY-21846: Use "SequenceService" to find component, rather than specific component-type.
-        AzToolsFramework::EntityCompositionRequestBus::Broadcast(&AzToolsFramework::EntityCompositionRequests::AddComponentsToEntities, AzToolsFramework::EntityIdList{ newEntityId }, AZ::ComponentTypeList{ "{C02DC0E2-D0F3-488B-B9EE-98E28077EC56}" });
+        AzToolsFramework::EntityCompositionRequestBus::Broadcast(&AzToolsFramework::EntityCompositionRequests::AddComponentsToEntities, AzToolsFramework::EntityIdList{ newEntityId }, AZ::ComponentTypeList{ AZ::TypeId("{C02DC0E2-D0F3-488B-B9EE-98E28077EC56}") });
 
         // restore the Editor selection
         AzToolsFramework::ToolsApplicationRequests::Bus::Broadcast(&AzToolsFramework::ToolsApplicationRequests::Bus::Events::SetSelectedEntities, selectedEntities);
@@ -174,24 +169,31 @@ void CTrackViewSequenceManager::CreateSequence(QString name, [[maybe_unused]] Se
     }
 }
 
-////////////////////////////////////////////////////////////////////////////
 IAnimSequence* CTrackViewSequenceManager::OnCreateSequenceObject(QString name, bool isLegacySequence, AZ::EntityId entityId)
 {
+    IMovieSystem* movieSystem = AZ::Interface<IMovieSystem>::Get();
+
     // Drop legacy sequences on the floor, they are no longer supported.
-    if (isLegacySequence)
+    if (isLegacySequence && movieSystem)
     {
-        GetIEditor()->GetMovieSystem()->LogUserNotificationMsg(AZStd::string::format("Legacy Sequences are no longer supported. Skipping '%s'.", name.toUtf8().data()));
+        movieSystem->LogUserNotificationMsg(AZStd::string::format("Legacy Sequences are no longer supported. Skipping '%s'.", name.toUtf8().data()));
         return nullptr;
     }
 
-    IAnimSequence* sequence = GetIEditor()->GetMovieSystem()->CreateSequence(name.toUtf8().data(), /*bload =*/ false, /*id =*/ 0U, SequenceType::SequenceComponent, entityId);
-    AZ_Assert(sequence, "Failed to create sequence");
-    AddTrackViewSequence(new CTrackViewSequence(sequence));
+    if (movieSystem)
+    {
+        IAnimSequence* sequence = movieSystem->CreateSequence(name.toUtf8().data(), /*bload =*/ false, /*id =*/ 0U, SequenceType::SequenceComponent, entityId);
+        AZ_Assert(sequence, "Failed to create sequence");
+        AddTrackViewSequence(new CTrackViewSequence(sequence));
 
-    return sequence;
+        return sequence;
+    }
+    else
+    {
+        return nullptr;
+    }
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::OnSequenceActivated(const AZ::EntityId& entityId)
 {
     CAnimationContext* pAnimationContext = GetIEditor()->GetAnimation();
@@ -201,14 +203,27 @@ void CTrackViewSequenceManager::OnSequenceActivated(const AZ::EntityId& entityId
     }
 }
 
-////////////////////////////////////////////////////////////////////////////
+void CTrackViewSequenceManager::OnSequenceDeactivated(const AZ::EntityId& entityId)
+{
+    CAnimationContext* pAnimationContext = GetIEditor()->GetAnimation();
+    if (pAnimationContext != nullptr)
+    {
+        pAnimationContext->OnSequenceDeactivated(entityId);
+    }
+}
+
 void CTrackViewSequenceManager::OnCreateSequenceComponent(AZStd::intrusive_ptr<IAnimSequence>& sequence)
 {
     // Fix up the internal pointers in the sequence to match the deserialized structure
     sequence->InitPostLoad();
 
+    IMovieSystem* movieSystem = AZ::Interface<IMovieSystem>::Get();
+
     // Add the sequence to the movie system
-    GetIEditor()->GetMovieSystem()->AddSequence(sequence.get());
+    if (movieSystem)
+    {
+        movieSystem->AddSequence(sequence.get());
+    }
 
     // Create the TrackView Sequence
     CTrackViewSequence* newTrackViewSequence = new CTrackViewSequence(sequence);
@@ -216,15 +231,13 @@ void CTrackViewSequenceManager::OnCreateSequenceComponent(AZStd::intrusive_ptr<I
     AddTrackViewSequence(newTrackViewSequence);
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::AddTrackViewSequence(CTrackViewSequence* sequenceToAdd)
 {
-    m_sequences.push_back(std::unique_ptr<CTrackViewSequence>(sequenceToAdd));
+    m_sequences.push_back(AZStd::unique_ptr<CTrackViewSequence>(sequenceToAdd));
     SortSequences();
     OnSequenceAdded(sequenceToAdd);
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::DeleteSequence(CTrackViewSequence* sequence)
 {
     const int numSequences = static_cast<int>(m_sequences.size());
@@ -276,7 +289,6 @@ void CTrackViewSequenceManager::DeleteSequence(CTrackViewSequence* sequence)
     }
 }
 
-//////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::RenameNode(CTrackViewAnimNode* animNode, const char* newName) const
 {
     AZ::EntityId entityId;
@@ -315,11 +327,11 @@ void CTrackViewSequenceManager::RenameNode(CTrackViewAnimNode* animNode, const c
 
 void CTrackViewSequenceManager::RemoveSequenceInternal(CTrackViewSequence* sequence)
 {
-    std::unique_ptr<CTrackViewSequence> storedTrackViewSequence;
+    AZStd::unique_ptr<CTrackViewSequence> storedTrackViewSequence;
     
     for (auto iter = m_sequences.begin(); iter != m_sequences.end(); ++iter)
     {
-        std::unique_ptr<CTrackViewSequence>& currentSequence = *iter;
+        AZStd::unique_ptr<CTrackViewSequence>& currentSequence = *iter;
 
         if (currentSequence.get() == sequence)
         {
@@ -328,8 +340,12 @@ void CTrackViewSequenceManager::RemoveSequenceInternal(CTrackViewSequence* seque
 
             // Remove from CryMovie and TrackView
             m_sequences.erase(iter);
-            IMovieSystem* pMovieSystem = GetIEditor()->GetMovieSystem();
-            pMovieSystem->RemoveSequence(sequence->m_pAnimSequence.get());
+
+            IMovieSystem* movieSystem = AZ::Interface<IMovieSystem>::Get();
+            if (movieSystem)
+            {
+                movieSystem->RemoveSequence(sequence->m_pAnimSequence.get());
+            }
 
             break;
         }
@@ -338,11 +354,10 @@ void CTrackViewSequenceManager::RemoveSequenceInternal(CTrackViewSequence* seque
     OnSequenceRemoved(sequence);
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::OnDeleteSequenceEntity(const AZ::EntityId& entityId)
 {
     CTrackViewSequence* sequence = GetSequenceByEntityId(entityId);
-    assert(sequence);
+    AZ_Assert(sequence, "Sequence is null");
 
     if (sequence)
     {
@@ -365,11 +380,10 @@ void CTrackViewSequenceManager::OnDeleteSequenceEntity(const AZ::EntityId& entit
     }
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::SortSequences()
 {
-    std::stable_sort(m_sequences.begin(), m_sequences.end(),
-        [](const std::unique_ptr<CTrackViewSequence>& a, const std::unique_ptr<CTrackViewSequence>& b) -> bool
+    AZStd::stable_sort(m_sequences.begin(), m_sequences.end(),
+        [](const AZStd::unique_ptr<CTrackViewSequence>& a, const AZStd::unique_ptr<CTrackViewSequence>& b) -> bool
         {
             QString aName = QString::fromUtf8(a.get()->GetName().c_str());
             QString bName = QString::fromUtf8(b.get()->GetName().c_str());
@@ -377,7 +391,6 @@ void CTrackViewSequenceManager::SortSequences()
         });
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::ResumeAllSequences()
 {
     for (auto iter = m_sequences.begin(); iter != m_sequences.end(); ++iter)
@@ -390,7 +403,6 @@ void CTrackViewSequenceManager::ResumeAllSequences()
     }
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::OnSequenceAdded(CTrackViewSequence* sequence)
 {
     for (auto iter = m_listeners.begin(); iter != m_listeners.end(); ++iter)
@@ -399,7 +411,6 @@ void CTrackViewSequenceManager::OnSequenceAdded(CTrackViewSequence* sequence)
     }
 }
 
-////////////////////////////////////////////////////////////////////////////
 void CTrackViewSequenceManager::OnSequenceRemoved(CTrackViewSequence* sequence)
 {
     for (auto iter = m_listeners.begin(); iter != m_listeners.end(); ++iter)
@@ -408,7 +419,6 @@ void CTrackViewSequenceManager::OnSequenceRemoved(CTrackViewSequence* sequence)
     }
 }
 
-////////////////////////////////////////////////////////////////////////////
 CTrackViewAnimNodeBundle CTrackViewSequenceManager::GetAllRelatedAnimNodes(const AZ::EntityId entityId) const
 {
     CTrackViewAnimNodeBundle nodeBundle;
@@ -424,7 +434,6 @@ CTrackViewAnimNodeBundle CTrackViewSequenceManager::GetAllRelatedAnimNodes(const
     return nodeBundle;
 }
 
-////////////////////////////////////////////////////////////////////////////
 CTrackViewAnimNode* CTrackViewSequenceManager::GetActiveAnimNode(const AZ::EntityId entityId) const
 {
     CTrackViewAnimNodeBundle nodeBundle = GetAllRelatedAnimNodes(entityId);

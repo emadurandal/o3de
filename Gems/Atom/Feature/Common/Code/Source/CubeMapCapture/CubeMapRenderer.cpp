@@ -35,6 +35,7 @@ namespace AZ
             environmentCubeMapPipelineDesc.m_renderSettings.m_multisampleState = RPI::RPISystemInterface::Get()->GetApplicationMultisampleState();
             environmentCubeMapPipelineDesc.m_renderSettings.m_size.m_width = RPI::EnvironmentCubeMapPass::CubeMapFaceSize;
             environmentCubeMapPipelineDesc.m_renderSettings.m_size.m_height = RPI::EnvironmentCubeMapPass::CubeMapFaceSize;
+            environmentCubeMapPipelineDesc.m_allowModification = true; // Enable pipeline modification since we need to have GI lighting for the baking
 
             // create a unique name for the pipeline
             AZ::Uuid uuid = AZ::Uuid::CreateRandom();
@@ -58,8 +59,8 @@ namespace AZ
 
             // store the current exposure values
             Data::Instance<RPI::ShaderResourceGroup> sceneSrg = m_scene->GetShaderResourceGroup();
-            m_previousGlobalIblExposure = sceneSrg->GetConstant<float>(m_globalIblExposureConstantIndex);
-            m_previousSkyBoxExposure = sceneSrg->GetConstant<float>(m_skyBoxExposureConstantIndex);
+            m_previousGlobalIblExposure = sceneSrg->GetConstant<float>(m_globalIblExposureConstantIndex.GetConstantIndex());
+            m_previousSkyBoxExposure = sceneSrg->GetConstant<float>(m_skyBoxExposureConstantIndex.GetConstantIndex());
 
             // add the pipeline to the scene
             m_scene->AddRenderPipeline(environmentCubeMapPipeline);

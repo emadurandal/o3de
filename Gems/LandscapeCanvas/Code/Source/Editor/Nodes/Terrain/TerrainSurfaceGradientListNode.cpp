@@ -12,6 +12,7 @@
 // AZ
 #include <AzCore/Serialization/EditContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
+#include <AzCore/std/smart_ptr/make_shared.h>
 
 // Graph Model
 #include <GraphModel/Integration/Helpers.h>
@@ -42,7 +43,7 @@ namespace LandscapeCanvas
         }
     }
 
-    const QString TerrainSurfaceGradientListNode::TITLE = QObject::tr("Terrain Surface Gradient List");
+    const char* TerrainSurfaceGradientListNode::TITLE = "Terrain Surface Gradient List";
 
     TerrainSurfaceGradientListNode::TerrainSurfaceGradientListNode(GraphModel::GraphPtr graph)
         : BaseNode(graph)
@@ -53,27 +54,29 @@ namespace LandscapeCanvas
 
     const BaseNode::BaseNodeType TerrainSurfaceGradientListNode::GetBaseNodeType() const
     {
-        return BaseNode::TerrainExtender;
+        return BaseNode::TerrainSurfaceExtender;
     }
 
     const char* TerrainSurfaceGradientListNode::GetTitle() const
     {
-        return TITLE.toUtf8().constData();
+        return TITLE;
     }
 
     void TerrainSurfaceGradientListNode::RegisterSlots()
     {
         GraphModel::DataTypePtr gradientDataType = GetGraphContext()->GetDataType(LandscapeCanvasDataTypeEnum::Gradient);
 
-        GraphModel::ExtendableSlotConfiguration slotConfig;
-        slotConfig.m_addButtonLabel = "Add Gradient";
-        slotConfig.m_addButtonTooltip = "Add a gradient surface provider";
-        RegisterSlot(GraphModel::SlotDefinition::CreateInputData(
+        RegisterSlot(AZStd::make_shared<GraphModel::SlotDefinition>(
+            GraphModel::SlotDirection::Input,
+            GraphModel::SlotType::Data,
             INBOUND_GRADIENT_SLOT_ID,
             INBOUND_GRADIENT_SLOT_LABEL.toUtf8().constData(),
-            { gradientDataType },
-            AZStd::any(AZ::EntityId()),
             INBOUND_GRADIENT_INPUT_SLOT_DESCRIPTION.toUtf8().constData(),
-            &slotConfig));
+            GraphModel::DataTypeList{ gradientDataType },
+            AZStd::any(AZ::EntityId()),
+            1,
+            100,
+            "Add Gradient",
+            "Add a gradient surface provider"));
     }
 } // namespace LandscapeCanvas

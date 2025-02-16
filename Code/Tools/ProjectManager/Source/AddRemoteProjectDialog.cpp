@@ -48,16 +48,29 @@ namespace O3DE::ProjectManager
 
         m_repoPath = new FormLineEditWidget(tr("Remote URL"), "", this);
         m_repoPath->setMinimumSize(QSize(600, 0));
+        m_repoPath->setErrorLabelText(tr("Not a valid remote source."));
+        m_repoPath->lineEdit()->setPlaceholderText("https://github.com/o3de/example.git");
         vLayout->addWidget(m_repoPath);
 
         vLayout->addSpacing(10);
+
+        QHBoxLayout* warningHLayout = new QHBoxLayout();
+        QLabel* warningIcon = new QLabel();
+        warningIcon->setPixmap(QIcon(":/Warning.svg").pixmap(32, 32));
+        warningIcon->setAlignment(Qt::AlignCenter);
+        warningIcon->setFixedSize(32, 32);
+        warningHLayout->addWidget(warningIcon);
+
+        warningHLayout->addSpacing(10);
 
         QLabel* warningLabel = new QLabel(tr("Online repositories may contain files that could potentially harm your computer,"
             " please ensure you understand the risks before downloading from third-party sources."), this);
         warningLabel->setObjectName("remoteProjectDialogWarningLabel");
         warningLabel->setWordWrap(true);
         warningLabel->setAlignment(Qt::AlignLeft);
-        vLayout->addWidget(warningLabel);
+        warningHLayout->addWidget(warningLabel);
+
+        vLayout->addLayout(warningHLayout);
 
         vLayout->addSpacing(10);
 
@@ -105,7 +118,7 @@ namespace O3DE::ProjectManager
         extraInfoGridLayout->setAlignment(Qt::AlignLeft);
         
 
-        m_requirementsTitleLabel = new QLabel(tr("Requirements"), this);
+        m_requirementsTitleLabel = new QLabel(tr("Project Requirements"), this);
         m_requirementsTitleLabel->setObjectName("remoteProjectDialogRequirementsTitleLabel");
         m_requirementsTitleLabel->setAlignment(Qt::AlignLeft);
 
@@ -143,6 +156,7 @@ namespace O3DE::ProjectManager
         QPushButton* cancelButton = m_dialogButtons->addButton(tr("Cancel"), QDialogButtonBox::RejectRole);
         cancelButton->setProperty("secondary", true);
         m_applyButton = m_dialogButtons->addButton(tr("Download && Build"), QDialogButtonBox::ApplyRole);
+        m_applyButton->setProperty("primary", true);
 
         connect(cancelButton, &QPushButton::clicked, this, &QDialog::reject);
         connect(m_applyButton, &QPushButton::clicked, this, &AddRemoteProjectDialog::DownloadObject);
@@ -171,7 +185,7 @@ namespace O3DE::ProjectManager
             {
                 // wait for a second before attempting to validate so we're less likely to do it per keypress
                 m_inputTimer->start(1000);
-                
+                m_repoPath->SetValidationState(FormLineEditWidget::ValidationState::Validating);
             });
 
         SetDialogReady(false);
@@ -200,7 +214,12 @@ namespace O3DE::ProjectManager
             }
         }
 
-        SetDialogReady(validRepository && containsProjects);
+        const bool isValidProjectRepo = validRepository && containsProjects;
+        m_repoPath->SetValidationState(
+            isValidProjectRepo ? FormLineEditWidget::ValidationState::ValidationSuccess
+                               : FormLineEditWidget::ValidationState::ValidationFailed);
+        m_repoPath->setErrorLabelVisible(!isValidProjectRepo);
+        SetDialogReady(isValidProjectRepo);
     }
 
     void AddRemoteProjectDialog::DownloadObject()
@@ -211,7 +230,7 @@ namespace O3DE::ProjectManager
         if (addGemRepoResult.IsSuccess())
         {
             // Send download to project screen to initiate download
-            emit StartObjectDownload(m_currentProject.m_projectName);
+            emit StartObjectDownload(m_currentProject.m_projectName, GetInstallPath(), ShouldBuild());
             emit QDialog::accept();
         }
         else

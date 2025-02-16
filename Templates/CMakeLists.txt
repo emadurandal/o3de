@@ -13,9 +13,14 @@ ly_install_directory(
         DefaultGem
         PrebuiltGem
         PythonToolGem
+        RemoteRepo
         DefaultProject
         MinimalProject
         GemRepo
         DefaultComponent
+        ScriptCanvasNode
+        UnifiedMultiplayerGem
+        GraphicsGem
+        ScriptOnlyProject
     VERBATIM
 )

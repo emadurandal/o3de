@@ -83,6 +83,9 @@ namespace LegacyLevelSystem
 
         AzFramework::RootSpawnableNotificationBus::Handler::BusConnect();
 
+        AZ_Error("SpawnableLevelSystem", AzFramework::LevelSystemLifecycleInterface::Get() == this,
+            "Failed to register the SpawnableLevelSystem with the LevelSystemLifecycleInterface.");
+
         // If there were LoadLevel command invocations before the creation of the level system
         // then those invocations were queued.
         // load the last level in the queue, since only one level can be loaded at a time
@@ -113,7 +116,7 @@ namespace LegacyLevelSystem
         delete this;
     }
 
-    bool SpawnableLevelSystem::IsLevelLoaded()
+    bool SpawnableLevelSystem::IsLevelLoaded() const
     {
         return m_bLevelLoaded;
     }
@@ -203,7 +206,7 @@ namespace LegacyLevelSystem
         AZStd::string validLevelName;
         AZ::Data::AssetId rootSpawnableAssetId;
         AZ::Data::AssetCatalogRequestBus::BroadcastResult(
-            rootSpawnableAssetId, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetIdByPath, levelName, nullptr, false);
+            rootSpawnableAssetId, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetIdByPath, levelName, AZ::Data::AssetType{}, false);
 
         if (rootSpawnableAssetId.IsValid())
         {
@@ -220,7 +223,7 @@ namespace LegacyLevelSystem
 
                 AZ::Data::AssetCatalogRequestBus::BroadcastResult(
                     rootSpawnableAssetId, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetIdByPath, possibleLevelAssetPath.c_str(),
-                    nullptr, false);
+                    AZ::Data::AssetType{}, false);
 
                 if (rootSpawnableAssetId.IsValid())
                 {
@@ -237,8 +240,8 @@ namespace LegacyLevelSystem
 
         // This is a valid level, find out if any systems need to stop level loading before proceeding
         bool blockLoading = false;
-        AzFramework::LevelSystemLifecycleRequestBus::EnumerateHandlers(
-            [&blockLoading, &validLevelName](AzFramework::LevelSystemLifecycleRequests* handler)->bool
+        AzFramework::LevelLoadBlockerBus::EnumerateHandlers(
+            [&blockLoading, &validLevelName](AzFramework::LevelLoadBlockerRequests* handler) -> bool
             {
                 if (handler->ShouldBlockLevelLoading(validLevelName.c_str()))
                 {
@@ -281,7 +284,7 @@ namespace LegacyLevelSystem
 
         AZ::Data::AssetId rootSpawnableAssetId;
         AZ::Data::AssetCatalogRequestBus::BroadcastResult(
-            rootSpawnableAssetId, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetIdByPath, levelName, nullptr, false);
+            rootSpawnableAssetId, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetIdByPath, levelName, AZ::Data::AssetType{}, false);
         if (!rootSpawnableAssetId.IsValid())
         {
             OnLoadingError(levelName, "AssetCatalog has no entry for the requested level.");
@@ -332,11 +335,13 @@ namespace LegacyLevelSystem
             //////////////////////////////////////////////////////////////////////////
             // Movie system must be reset after entities.
             //////////////////////////////////////////////////////////////////////////
-            IMovieSystem* movieSys = gEnv->pMovieSystem;
-            if (movieSys != NULL)
+            IMovieSystem* movieSystem = AZ::Interface<IMovieSystem>::Get();
+            if (movieSystem)
             {
                 // bSeekAllToStart needs to be false here as it's only of interest in the editor
-                movieSys->Reset(true, false);
+                constexpr bool playOnReset = true;
+                constexpr bool seekToStart = false;
+                movieSystem->Reset(playOnReset, seekToStart);
             }
 
             gEnv->pSystem->SetSystemGlobalState(ESYSTEM_GLOBAL_STATE_LEVEL_LOAD_START_PRECACHE);
@@ -373,7 +378,7 @@ namespace LegacyLevelSystem
     {
         AZ::Data::AssetId rootSpawnableAssetId;
         AZ::Data::AssetCatalogRequestBus::BroadcastResult(
-            rootSpawnableAssetId, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetIdByPath, levelName, nullptr, false);
+            rootSpawnableAssetId, &AZ::Data::AssetCatalogRequestBus::Events::GetAssetIdByPath, levelName, AZ::Data::AssetType{}, false);
         if (!rootSpawnableAssetId.IsValid())
         {
             // alert the listener
@@ -576,16 +581,22 @@ namespace LegacyLevelSystem
 
         const AZ::TimeMs beginTimeMs = AZ::GetRealElapsedTimeMs();
 
-        if (gEnv->pMovieSystem)
+        IMovieSystem* movieSystem = AZ::Interface<IMovieSystem>::Get();
+        if (movieSystem)
         {
-            gEnv->pMovieSystem->Reset(false, false);
-            gEnv->pMovieSystem->RemoveAllSequences();
+            constexpr bool playOnReset = false;
+            constexpr bool seekToStart = false;
+            movieSystem->Reset(playOnReset, seekToStart);
+            movieSystem->RemoveAllSequences();
         }
 
         OnUnloadComplete(m_lastLevelName.c_str());
 
         // Delete level entities and remove them from the game entity context
         AzFramework::RootSpawnableInterface::Get()->ReleaseRootSpawnable();
+        
+        // Process the queued deactivate calls for the unloaded entities
+        AzFramework::RootSpawnableInterface::Get()->ProcessSpawnableQueueUntilEmpty();
 
         m_lastLevelName.clear();
 

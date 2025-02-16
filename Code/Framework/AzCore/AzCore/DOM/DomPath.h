@@ -107,6 +107,10 @@ namespace AZ::Dom
         Path& operator/=(const Path&);
 
         bool operator==(const Path&) const;
+        bool operator!=(const Path& rhs) const
+        {
+            return !operator==(rhs);
+        }
 
         const ContainerType& GetEntries() const;
         void Push(PathEntry entry);
@@ -116,6 +120,7 @@ namespace AZ::Dom
         void Pop();
         void Clear();
         PathEntry At(size_t index) const;
+        PathEntry Back() const;
         size_t Size() const;
         bool IsEmpty() const;
 
@@ -153,6 +158,9 @@ namespace AZ::Dom
         //! "/path/to/foo/0"
         //! "path/to/foo/0"
         void FromString(AZStd::string_view pathString);
+
+        //! Returns true if this path contains any "EndOfArray" entries that require a target DOM to look up.
+        bool ContainsNormalizedEntries() const;
 
     private:
         ContainerType m_entries;

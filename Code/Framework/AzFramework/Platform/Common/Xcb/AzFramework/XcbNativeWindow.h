@@ -21,18 +21,18 @@ namespace AzFramework
         , public XcbEventHandlerBus::Handler
     {
     public:
-        AZ_CLASS_ALLOCATOR(XcbNativeWindow, AZ::SystemAllocator, 0);
+        AZ_CLASS_ALLOCATOR(XcbNativeWindow, AZ::SystemAllocator);
         XcbNativeWindow();
         ~XcbNativeWindow() override;
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         // NativeWindow::Implementation
-        void InitWindow(const AZStd::string& title, const WindowGeometry& geometry, const WindowStyleMasks& styleMasks) override;
+        void InitWindowInternal(const AZStd::string& title, const WindowGeometry& geometry, const WindowStyleMasks& styleMasks) override;
         void Activate() override;
         void Deactivate() override;
         NativeWindowHandle GetWindowHandle() const override;
         void SetWindowTitle(const AZStd::string& title) override;
-        void ResizeClientArea(WindowSize clientAreaSize) override;
+        void ResizeClientArea(WindowSize clientAreaSize, const WindowPosOptions& options) override;
         bool SupportsClientAreaResize() const override;
         uint32_t GetDisplayRefreshRate() const override;
 

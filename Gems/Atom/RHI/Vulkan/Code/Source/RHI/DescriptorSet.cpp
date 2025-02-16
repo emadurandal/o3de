@@ -39,7 +39,7 @@ namespace AZ
             }            
         }
 
-        void DescriptorSet::UpdateBufferViews(uint32_t layoutIndex, const AZStd::span<const RHI::ConstPtr<RHI::BufferView>>& bufViews)
+        void DescriptorSet::UpdateBufferViews(uint32_t layoutIndex, const AZStd::span<const RHI::ConstPtr<RHI::DeviceBufferView>>& bufViews)
         {
             const DescriptorSetLayout& layout = *m_descriptor.m_descriptorSetLayout;
             VkDescriptorType type = layout.GetDescriptorType(layoutIndex);
@@ -53,7 +53,7 @@ namespace AZ
                 data.m_texelBufferViews.resize(bufViews.size());
                 for (size_t i = 0; i < bufViews.size(); ++i)
                 {
-                    const RHI::ConstPtr<RHI::BufferView>& bufferView = bufViews[i];
+                    const RHI::ConstPtr<RHI::DeviceBufferView>& bufferView = bufViews[i];
                     VkBufferView vkBufferView;
                     if (!bufferView || bufferView->IsStale())
                     {
@@ -64,7 +64,7 @@ namespace AZ
                         else
                         {
                             auto& device = static_cast<Device&>(GetDevice());
-                            vkBufferView = device.GetNullDescriptorManager().GetTexelBufferView();
+                            vkBufferView = device.GetNullDescriptorManager().GetTexelBufferView().GetNativeTexelBufferView();
                         }
                     }
                     else
@@ -82,19 +82,20 @@ namespace AZ
                 for (size_t i = 0; i < bufViews.size(); ++i)
                 {
                     VkDescriptorBufferInfo bufferInfo = {};
-                    const RHI::ConstPtr<RHI::BufferView>& bufferView = bufViews[i];
+                    const RHI::ConstPtr<RHI::DeviceBufferView>& bufferView = bufViews[i];
                     if (!bufferView || bufferView->IsStale())
                     {
+                        bufferInfo.offset = 0;
+                        bufferInfo.range = VK_WHOLE_SIZE;
                         if (m_nullDescriptorSupported)
                         {
                             bufferInfo.buffer = VK_NULL_HANDLE;
-                            bufferInfo.offset = 0;
-                            bufferInfo.range = VK_WHOLE_SIZE;
                         }
                         else
                         {
                             auto& device = static_cast<Device&>(GetDevice());
-                            bufferInfo = device.GetNullDescriptorManager().GetBuffer();
+                            const BufferMemoryView* bufferMemoryView = static_cast<const Buffer&>(device.GetNullDescriptorManager().GetBuffer()).GetBufferMemoryView();
+                            bufferInfo.buffer = bufferMemoryView->GetNativeBuffer();
                         }
                     }
                     else
@@ -102,7 +103,8 @@ namespace AZ
                         auto& bufferViewDescriptor = bufferView->GetDescriptor();
                         const BufferMemoryView* bufferMemoryView = static_cast<const Buffer&>(bufferView->GetBuffer()).GetBufferMemoryView();
                         bufferInfo.buffer = bufferMemoryView->GetNativeBuffer();
-                        bufferInfo.offset = bufferMemoryView->GetOffset() + bufferViewDescriptor.m_elementOffset * bufferViewDescriptor.m_elementSize;
+                        bufferInfo.offset =
+                            bufferMemoryView->GetOffset() + bufferViewDescriptor.m_elementOffset * bufferViewDescriptor.m_elementSize;
                         bufferInfo.range = bufferViewDescriptor.m_elementCount * bufferViewDescriptor.m_elementSize;
                     }
 
@@ -119,7 +121,7 @@ namespace AZ
             m_updateData.push_back(AZStd::move(data));
         }
 
-        void DescriptorSet::UpdateImageViews(uint32_t layoutIndex, const AZStd::span<const RHI::ConstPtr<RHI::ImageView>>& imageViews, RHI::ShaderInputImageType imageType)
+        void DescriptorSet::UpdateImageViews(uint32_t layoutIndex, const AZStd::span<const RHI::ConstPtr<RHI::DeviceImageView>>& imageViews, RHI::ShaderInputImageType imageType)
         {
             const DescriptorSetLayout& layout = *m_descriptor.m_descriptorSetLayout;
 
@@ -142,16 +144,14 @@ namespace AZ
                         auto& device = static_cast<Device&>(GetDevice());
                         NullDescriptorManager& nullDescriptorManager = device.GetNullDescriptorManager();
                         bool storageImage = (layout.GetDescriptorType(layoutIndex) == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-                        imageInfo = nullDescriptorManager.GetDescriptorImageInfo(imageType, storageImage);
+                        imageInfo =
+                            nullDescriptorManager.GetDescriptorImageInfo(imageType, storageImage, layout.UsesDepthFormat(layoutIndex));
                     }
                 }
                 else
                 {
                     imageInfo.imageView = imageView->GetNativeImageView();
-
-                    // always set VK_IMAGE_LAYOUT_GENERAL if the Image is ShaderWrite, even if the descriptor layout wants a read-only input
-                    if (layout.GetDescriptorType(layoutIndex) == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
-                        RHI::CheckBitsAny(imageView->GetImage().GetDescriptor().m_bindFlags, RHI::ImageBindFlags::ShaderWrite))
+                    if (layout.GetDescriptorType(layoutIndex) == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
                     {
                         imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
                     }
@@ -259,7 +259,7 @@ namespace AZ
             {
                 m_constantDataBuffer = Buffer::Create();
                 const RHI::BufferDescriptor bufferDescriptor(RHI::BufferBindFlags::Constant, constantDataSize);
-                RHI::BufferInitRequest request(*m_constantDataBuffer, bufferDescriptor);
+                RHI::DeviceBufferInitRequest request(*m_constantDataBuffer, bufferDescriptor);
                 RHI::ResultCode rhiResult = vulkanDescriptor.m_constantDataPool->InitBuffer(request);
                 if (rhiResult != RHI::ResultCode::Success)
                 {
@@ -372,7 +372,7 @@ namespace AZ
                         // acceleration structure descriptor is added as the pNext in the VkWriteDescriptorSet
                         VkWriteDescriptorSetAccelerationStructureKHR writeAccelerationStructure = {};
                         writeAccelerationStructure.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-                        writeAccelerationStructure.accelerationStructureCount = 1;
+                        writeAccelerationStructure.accelerationStructureCount = interval.m_max - interval.m_min;
                         writeAccelerationStructure.pAccelerationStructures = updateData.m_accelerationStructures.data() + interval.m_min;
                         writeAccelerationStructureDescs.push_back(AZStd::move(writeAccelerationStructure));
 
@@ -416,6 +416,7 @@ namespace AZ
                     case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
                     case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
                     case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+                    case VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR:
                         unboundedArraySize = aznumeric_cast<uint32_t>(updateData.m_bufferViewsInfo.size());
                         break;
                     case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:

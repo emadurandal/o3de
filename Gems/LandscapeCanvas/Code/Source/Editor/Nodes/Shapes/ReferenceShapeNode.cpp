@@ -10,6 +10,7 @@
 
 #include <AzCore/Serialization/EditContext.h>
 #include <AzCore/Serialization/SerializeContext.h>
+#include <AzCore/std/smart_ptr/make_shared.h>
 
 #include <GraphModel/Integration/Helpers.h>
 #include <GraphModel/Model/Slot.h>
@@ -39,7 +40,7 @@ namespace LandscapeCanvas
         }
     }
 
-    const QString ReferenceShapeNode::TITLE = QObject::tr("Shape Reference");
+    const char* ReferenceShapeNode::TITLE = "Shape Reference";
 
     ReferenceShapeNode::ReferenceShapeNode(GraphModel::GraphPtr graph)
         : BaseNode(graph)
@@ -50,12 +51,12 @@ namespace LandscapeCanvas
 
     const char* ReferenceShapeNode::GetTitle() const
     {
-        return TITLE.toUtf8().constData();
+        return TITLE;
     }
 
     const char* ReferenceShapeNode::GetSubTitle() const
     {
-        return BaseShapeNode::SHAPE_CATEGORY_TITLE.toUtf8().constData();
+        return BaseShapeNode::SHAPE_CATEGORY_TITLE;
     }
 
     const BaseNode::BaseNodeType ReferenceShapeNode::GetBaseNodeType() const
@@ -69,17 +70,21 @@ namespace LandscapeCanvas
 
         GraphModel::DataTypePtr boundsDataType = GetGraphContext()->GetDataType(LandscapeCanvasDataTypeEnum::Bounds);
 
-        RegisterSlot(GraphModel::SlotDefinition::CreateInputData(
+        RegisterSlot(AZStd::make_shared<GraphModel::SlotDefinition>(
+            GraphModel::SlotDirection::Input,
+            GraphModel::SlotType::Data,
             INBOUND_SHAPE_SLOT_ID,
             INBOUND_SHAPE_SLOT_LABEL.toUtf8().constData(),
-            { boundsDataType },
-            AZStd::any(AZ::EntityId()),
-            INBOUND_SHAPE_INPUT_SLOT_DESCRIPTION.toUtf8().constData()));
+            INBOUND_SHAPE_INPUT_SLOT_DESCRIPTION.toUtf8().constData(),
+            GraphModel::DataTypeList{ boundsDataType },
+            AZStd::any(AZ::EntityId())));
 
-        RegisterSlot(GraphModel::SlotDefinition::CreateOutputData(
+        RegisterSlot(AZStd::make_shared<GraphModel::SlotDefinition>(
+            GraphModel::SlotDirection::Output,
+            GraphModel::SlotType::Data,
             BaseShapeNode::BOUNDS_SLOT_ID,
             BaseShapeNode::BOUNDS_SLOT_LABEL.toUtf8().constData(),
-            boundsDataType,
-            BaseShapeNode::BOUNDS_OUTPUT_SLOT_DESCRIPTION.toUtf8().constData()));
+            BaseShapeNode::BOUNDS_OUTPUT_SLOT_DESCRIPTION.toUtf8().constData(),
+            GraphModel::DataTypeList{ boundsDataType }));
     }
 } // namespace LandscapeCanvas

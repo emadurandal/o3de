@@ -50,7 +50,7 @@ namespace AZ
             return cpuSourceDescriptors;
         }
 
-        AZStd::vector<DescriptorHandle> ShaderResourceGroupPool::GetCBVsFromBufferViews(const AZStd::span<const RHI::ConstPtr<RHI::BufferView>>& bufferViews)
+        AZStd::vector<DescriptorHandle> ShaderResourceGroupPool::GetCBVsFromBufferViews(const AZStd::span<const RHI::ConstPtr<RHI::DeviceBufferView>>& bufferViews)
         {
             AZStd::vector<DescriptorHandle> cpuSourceDescriptors(bufferViews.size(), m_descriptorContext->GetNullHandleCBV());
 
@@ -88,7 +88,6 @@ namespace AZ
             m_descriptorTableBufferOffset = 0;
             m_descriptorTableImageOffset = layout.GetGroupSizeForBuffers();
 
-            // Unbounded arrays each have their own descriptor tables
             m_unboundedArrayCount = layout.GetGroupSizeForBufferUnboundedArrays() + layout.GetGroupSizeForImageUnboundedArrays();
 
             if (m_constantBufferSize)
@@ -111,7 +110,7 @@ namespace AZ
             Base::ShutdownInternal();
         }
 
-        RHI::ResultCode ShaderResourceGroupPool::InitGroupInternal(RHI::ShaderResourceGroup& groupBase)
+        RHI::ResultCode ShaderResourceGroupPool::InitGroupInternal(RHI::DeviceShaderResourceGroup& groupBase)
         {
             ShaderResourceGroup& group = static_cast<ShaderResourceGroup&>(groupBase);
 
@@ -133,7 +132,7 @@ namespace AZ
    
             if (m_samplersDescriptorTableSize)
             {
-                group.m_samplersDescriptorTable = m_descriptorContext->CreateDescriptorTable(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, m_samplersDescriptorTableRingSize, &group);
+                group.m_samplersDescriptorTable = m_descriptorContext->CreateDescriptorTable(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, m_samplersDescriptorTableRingSize);
 
                 if (!group.m_samplersDescriptorTable.IsValid())
                 {
@@ -156,7 +155,7 @@ namespace AZ
             return RHI::ResultCode::Success;
         }
 
-        void ShaderResourceGroupPool::ShutdownResourceInternal(RHI::Resource& resourceBase)
+        void ShaderResourceGroupPool::ShutdownResourceInternal(RHI::DeviceResource& resourceBase)
         {
             ShaderResourceGroup& group = static_cast<ShaderResourceGroup&>(resourceBase);
 
@@ -170,7 +169,7 @@ namespace AZ
             {
                 if (group.m_viewsDescriptorTable.IsValid())
                 {
-                    m_descriptorContext->ReleaseDescriptorTable(group.m_viewsDescriptorTable, &group);
+                    m_descriptorContext->ReleaseDescriptorTable(group.m_viewsDescriptorTable);
                 }
             }
 
@@ -178,7 +177,7 @@ namespace AZ
             {
                 if (group.m_viewsDescriptorTable.IsValid())
                 {
-                    m_descriptorContext->ReleaseDescriptorTable(group.m_samplersDescriptorTable, &group);
+                    m_descriptorContext->ReleaseDescriptorTable(group.m_samplersDescriptorTable);
                 }
             }
 
@@ -186,7 +185,7 @@ namespace AZ
             {
                 if (group.m_unboundedDescriptorTables[unboundedArrayindex].IsValid())
                 {
-                    m_descriptorContext->ReleaseDescriptorTable(group.m_unboundedDescriptorTables[unboundedArrayindex], &group);
+                    m_descriptorContext->ReleaseDescriptorTable(group.m_unboundedDescriptorTables[unboundedArrayindex]);
                 }
             }
 
@@ -197,12 +196,11 @@ namespace AZ
         }
 
         RHI::ResultCode ShaderResourceGroupPool::CompileGroupInternal(
-            RHI::ShaderResourceGroup& groupBase,
-            const RHI::ShaderResourceGroupData& groupData)
+            RHI::DeviceShaderResourceGroup& groupBase,
+            const RHI::DeviceShaderResourceGroupData& groupData)
         {
-            typedef AZ::RHI::ShaderResourceGroupData::ResourceTypeMask ResourceMask;
+            typedef AZ::RHI::DeviceShaderResourceGroupData::ResourceTypeMask ResourceMask;
             ShaderResourceGroup& group = static_cast<ShaderResourceGroup&>(groupBase);
-            auto& device = static_cast<Device&>(GetDevice());
 
             group.m_compiledDataIndex = (group.m_compiledDataIndex + 1) % RHI::Limits::Device::FrameCountMax;
             
@@ -217,13 +215,15 @@ namespace AZ
                 if (!group.m_viewsDescriptorTable.IsValid())
                 {
                     group.m_viewsDescriptorTable = m_descriptorContext->CreateDescriptorTable(
-                        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_viewsDescriptorTableRingSize, &group);
+                        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_viewsDescriptorTableRingSize);
 
                     if (!group.m_viewsDescriptorTable.IsValid())
                     {
-                        //We have support for compacting D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV (if applicable) so try that.
-                        device.DescriptorHeapCompactionNeeded();
-                        return RHI::ResultCode::Success;
+                        AZ_Assert(
+                            false,
+                            "Descriptor heap ran out of memory. Please consider increasing number of handles allowed for the second value"
+                            "of DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV within platformlimits.azasset file for dx12.");
+                        return RHI::ResultCode::OutOfMemory;
                     }
 
                     CacheGpuHandlesForViews(group);
@@ -266,11 +266,11 @@ namespace AZ
         }
 
         void ShaderResourceGroupPool::UpdateViewsDescriptorTable(DescriptorTable descriptorTable,
-                                                                 RHI::ShaderResourceGroup& group,
-                                                                 const RHI::ShaderResourceGroupData& groupData,
+                                                                 RHI::DeviceShaderResourceGroup& group,
+                                                                 const RHI::DeviceShaderResourceGroupData& groupData,
                                                                  bool forceUpdateViews /*= false*/ )
         {
-            typedef AZ::RHI::ShaderResourceGroupData::ResourceTypeMask ResourceMask;
+            typedef AZ::RHI::DeviceShaderResourceGroupData::ResourceTypeMask ResourceMask;
             const RHI::ShaderResourceGroupLayout& groupLayout = *groupData.GetLayout();
             uint32_t shaderInputIndex = 0;
             
@@ -280,19 +280,19 @@ namespace AZ
                 {
                     const RHI::ShaderInputBufferIndex bufferInputIndex(shaderInputIndex);
 
-                    AZStd::span<const RHI::ConstPtr<RHI::BufferView>> bufferViews = groupData.GetBufferViewArray(bufferInputIndex);
+                    AZStd::span<const RHI::ConstPtr<RHI::DeviceBufferView>> bufferViews = groupData.GetBufferViewArray(bufferInputIndex);
                     D3D12_DESCRIPTOR_RANGE_TYPE descriptorRangeType = ConvertShaderInputBufferAccess(shaderInputBuffer.m_access);
                     AZStd::vector<DescriptorHandle> descriptorHandles;
                     switch (descriptorRangeType)
                     {
                         case D3D12_DESCRIPTOR_RANGE_TYPE_SRV:
                         {
-                            descriptorHandles = GetSRVsFromImageViews< RHI::BufferView, BufferView> (bufferViews, D3D12_SRV_DIMENSION_BUFFER);
+                            descriptorHandles = GetSRVsFromImageViews< RHI::DeviceBufferView, BufferView> (bufferViews, D3D12_SRV_DIMENSION_BUFFER);
                             break;
                         }
                         case D3D12_DESCRIPTOR_RANGE_TYPE_UAV:
                         {
-                            descriptorHandles = GetUAVsFromImageViews<RHI::BufferView, BufferView>(bufferViews, D3D12_UAV_DIMENSION_BUFFER);
+                            descriptorHandles = GetUAVsFromImageViews<RHI::DeviceBufferView, BufferView>(bufferViews, D3D12_UAV_DIMENSION_BUFFER);
                             break;
                         }
                         case D3D12_DESCRIPTOR_RANGE_TYPE_CBV:
@@ -317,7 +317,7 @@ namespace AZ
                 {
                     const RHI::ShaderInputImageIndex imageInputIndex(shaderInputIndex);
 
-                    AZStd::span<const RHI::ConstPtr<RHI::ImageView>> imageViews = groupData.GetImageViewArray(imageInputIndex);
+                    AZStd::span<const RHI::ConstPtr<RHI::DeviceImageView>> imageViews = groupData.GetImageViewArray(imageInputIndex);
                     D3D12_DESCRIPTOR_RANGE_TYPE descriptorRangeType = ConvertShaderInputImageAccess(shaderInputImage.m_access);
 
                     AZStd::vector<DescriptorHandle> descriptorHandles;
@@ -326,13 +326,13 @@ namespace AZ
                         case D3D12_DESCRIPTOR_RANGE_TYPE_SRV:
                         {
                             descriptorHandles =
-                                GetSRVsFromImageViews<RHI::ImageView, ImageView>(imageViews, ConvertSRVDimension(shaderInputImage.m_type));
+                                GetSRVsFromImageViews<RHI::DeviceImageView, ImageView>(imageViews, ConvertSRVDimension(shaderInputImage.m_type));
                             break;
                         }
                         case D3D12_DESCRIPTOR_RANGE_TYPE_UAV:
                         {
                             descriptorHandles =
-                                GetUAVsFromImageViews<RHI::ImageView, ImageView>(imageViews, ConvertUAVDimension(shaderInputImage.m_type));
+                                GetUAVsFromImageViews<RHI::DeviceImageView, ImageView>(imageViews, ConvertUAVDimension(shaderInputImage.m_type));
                             break;
                         }
                         default:
@@ -348,10 +348,10 @@ namespace AZ
 
         void ShaderResourceGroupPool::UpdateSamplersDescriptorTable(
             DescriptorTable descriptorTable,
-            RHI::ShaderResourceGroup& group,
-            const RHI::ShaderResourceGroupData& groupData)
+            RHI::DeviceShaderResourceGroup& group,
+            const RHI::DeviceShaderResourceGroupData& groupData)
         {
-            if(group.IsResourceTypeEnabledForCompilation(static_cast<uint32_t>(RHI::ShaderResourceGroupData::ResourceTypeMask::SamplerMask)))
+            if(group.IsResourceTypeEnabledForCompilation(static_cast<uint32_t>(RHI::DeviceShaderResourceGroupData::ResourceTypeMask::SamplerMask)))
             {
                 const RHI::ShaderResourceGroupLayout& groupLayout = *groupData.GetLayout();
                 const size_t shaderInputSize = groupLayout.GetShaderInputListForSamplers().size();
@@ -365,43 +365,51 @@ namespace AZ
             }
         }
 
-        void ShaderResourceGroupPool::UpdateUnboundedArrayDescriptorTables(ShaderResourceGroup& group, const RHI::ShaderResourceGroupData& groupData)
+        void ShaderResourceGroupPool::UpdateUnboundedArrayDescriptorTables(ShaderResourceGroup& group, const RHI::DeviceShaderResourceGroupData& groupData)
         {
             const RHI::ShaderResourceGroupLayout& groupLayout = *groupData.GetLayout();
-            auto& device = static_cast<Device&>(GetDevice());
             uint32_t shaderInputIndex = 0;
-            if(group.IsResourceTypeEnabledForCompilation(static_cast<uint32_t>(RHI::ShaderResourceGroupData::ResourceTypeMask::BufferViewUnboundedArrayMask)))
+
+            bool updateBuffers = group.IsResourceTypeEnabledForCompilation(
+                static_cast<uint32_t>(RHI::DeviceShaderResourceGroupData::ResourceTypeMask::BufferViewUnboundedArrayMask));
+
+            if (updateBuffers)
             {
                 // process buffer unbounded arrays
                 for (const RHI::ShaderInputBufferUnboundedArrayDescriptor& shaderInputBufferUnboundedArray : groupLayout.GetShaderInputListForBufferUnboundedArrays())
                 {
                     const RHI::ShaderInputBufferUnboundedArrayIndex bufferUnboundedArrayInputIndex(shaderInputIndex);
-                    AZStd::span<const RHI::ConstPtr<RHI::BufferView>> bufferViews = groupData.GetBufferViewUnboundedArray(bufferUnboundedArrayInputIndex);
-
                     uint32_t tableIndex = shaderInputIndex * RHI::Limits::Device::FrameCountMax + group.m_compiledDataIndex;
+                    ShaderResourceGroupCompiledData& compiledData = group.m_compiledData[group.m_compiledDataIndex];
+
+                    AZStd::span<const RHI::ConstPtr<RHI::DeviceBufferView>> bufferViews = groupData.GetBufferViewUnboundedArray(bufferUnboundedArrayInputIndex);
 
                     // resize the descriptor table allocation if necessary
                     if (group.m_unboundedDescriptorTables[tableIndex].GetSize() != bufferViews.size())
                     {
                         if (group.m_unboundedDescriptorTables[tableIndex].IsValid())
                         {
-                            m_descriptorContext->ReleaseDescriptorTable(group.m_unboundedDescriptorTables[tableIndex], &group);
+                            m_descriptorContext->ReleaseDescriptorTable(group.m_unboundedDescriptorTables[tableIndex]);
                             group.m_unboundedDescriptorTables[tableIndex] = DescriptorTable{};
                         }
 
                         if (!bufferViews.empty())
                         {
                             group.m_unboundedDescriptorTables[tableIndex] = m_descriptorContext->CreateDescriptorTable(
-                                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, static_cast<uint32_t>(bufferViews.size()), &group);
+                                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, static_cast<uint32_t>(bufferViews.size()));
                             
                             if (!group.m_unboundedDescriptorTables[tableIndex].IsValid())
                             {
-                                // We have support for compacting D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV (if applicable) so try that.
-                                device.DescriptorHeapCompactionNeeded();
+                                // It is possible to run out of number of descriptors in the descriptor heap if you are using custom SRG
+                                // with an unbounded array as it can fragment over time. Consider using Bindless SRG's unbounded arrays as
+                                // they do not fragment.
+                                AZ_Assert(
+                                    false,
+                                    "Descriptor heap ran out of memory. Please consider increasing number of handles allowed for the "
+                                    "second value of DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV within platformlimits.azasset file for dx12.");
                                 return;
                             }
 
-                            ShaderResourceGroupCompiledData& compiledData = group.m_compiledData[group.m_compiledDataIndex];
                             compiledData.m_gpuUnboundedArraysDescriptorHandles[shaderInputIndex] = m_descriptorContext->GetGpuPlatformHandleForTable(group.m_unboundedDescriptorTables[tableIndex]);
                         }
                     }
@@ -412,15 +420,19 @@ namespace AZ
                 }
             }
 
-            if(group.IsResourceTypeEnabledForCompilation(static_cast<uint32_t>(RHI::ShaderResourceGroupData::ResourceTypeMask::ImageViewUnboundedArrayMask)))
+            bool updateImages = group.IsResourceTypeEnabledForCompilation(
+                static_cast<uint32_t>(RHI::DeviceShaderResourceGroupData::ResourceTypeMask::ImageViewUnboundedArrayMask));
+
+            if (updateImages)
             {
                 // process image unbounded arrays
                 for (const RHI::ShaderInputImageUnboundedArrayDescriptor& shaderInputImageUnboundedArray : groupLayout.GetShaderInputListForImageUnboundedArrays())
                 {
                     const RHI::ShaderInputImageUnboundedArrayIndex imageUnboundedArrayInputIndex(shaderInputIndex);
-                    AZStd::span<const RHI::ConstPtr<RHI::ImageView>> imageViews = groupData.GetImageViewUnboundedArray(imageUnboundedArrayInputIndex);
-
                     uint32_t tableIndex = shaderInputIndex * RHI::Limits::Device::FrameCountMax + group.m_compiledDataIndex;
+                    ShaderResourceGroupCompiledData& compiledData = group.m_compiledData[group.m_compiledDataIndex];
+
+                    AZStd::span<const RHI::ConstPtr<RHI::DeviceImageView>> imageViews = groupData.GetImageViewUnboundedArray(imageUnboundedArrayInputIndex);
 
                     // resize the descriptor table allocation if necessary
                     if (group.m_unboundedDescriptorTables[tableIndex].GetSize() != imageViews.size())
@@ -428,23 +440,26 @@ namespace AZ
                        
                         if (group.m_unboundedDescriptorTables[tableIndex].IsValid())
                         {
-                            m_descriptorContext->ReleaseDescriptorTable(group.m_unboundedDescriptorTables[tableIndex], &group);
+                            m_descriptorContext->ReleaseDescriptorTable(group.m_unboundedDescriptorTables[tableIndex]);
                             group.m_unboundedDescriptorTables[tableIndex] = DescriptorTable{};
                         }
 
                         if (!imageViews.empty())
                         {
                             group.m_unboundedDescriptorTables[tableIndex] = m_descriptorContext->CreateDescriptorTable(
-                                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, static_cast<uint32_t>(imageViews.size()), &group);
+                                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, static_cast<uint32_t>(imageViews.size()));
 
                             if (!group.m_unboundedDescriptorTables[tableIndex].IsValid())
                             {
-                                // We have support for compacting D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV (if applicable) so try that
-                                device.DescriptorHeapCompactionNeeded();
+                                // It is possible to run out of number of descriptors in the descriptor heap if you are using custom SRG with an unbounded array
+                                // as it can fragment over time. Consider using Bindless SRG's unbounded arrays as they do not fragment.
+                                AZ_Assert(
+                                    false,
+                                    "Descriptor heap ran out of memory. Please consider increasing number of handles allowed for the "
+                                    "second value of DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV within platformlimits.azasset file for dx12.");
                                 return;
                             }
 
-                            ShaderResourceGroupCompiledData& compiledData = group.m_compiledData[group.m_compiledDataIndex];
                             compiledData.m_gpuUnboundedArraysDescriptorHandles[shaderInputIndex] = m_descriptorContext->GetGpuPlatformHandleForTable(group.m_unboundedDescriptorTables[tableIndex]);
                         }
                     }
@@ -458,12 +473,12 @@ namespace AZ
 
         void ShaderResourceGroupPool::UpdateUnboundedBuffersDescTable(
             DescriptorTable descriptorTable,
-            const RHI::ShaderResourceGroupData& groupData,
+            const RHI::DeviceShaderResourceGroupData& groupData,
             uint32_t shaderInputIndex,
             RHI::ShaderInputBufferAccess bufferAccess)
         {
             const RHI::ShaderInputBufferUnboundedArrayIndex bufferUnboundedArrayInputIndex(shaderInputIndex);
-            AZStd::span<const RHI::ConstPtr<RHI::BufferView>> bufferViews =
+            AZStd::span<const RHI::ConstPtr<RHI::DeviceBufferView>> bufferViews =
                 groupData.GetBufferViewUnboundedArray(bufferUnboundedArrayInputIndex);
 
             if (bufferViews.empty())
@@ -479,12 +494,12 @@ namespace AZ
             {
             case D3D12_DESCRIPTOR_RANGE_TYPE_SRV:
                 {
-                    descriptorHandles = GetSRVsFromImageViews<RHI::BufferView, BufferView>(bufferViews, D3D12_SRV_DIMENSION_BUFFER);
+                    descriptorHandles = GetSRVsFromImageViews<RHI::DeviceBufferView, BufferView>(bufferViews, D3D12_SRV_DIMENSION_BUFFER);
                     break;
                 }
             case D3D12_DESCRIPTOR_RANGE_TYPE_UAV:
                 {
-                    descriptorHandles = GetUAVsFromImageViews<RHI::BufferView, BufferView>(bufferViews, D3D12_UAV_DIMENSION_BUFFER);
+                    descriptorHandles = GetUAVsFromImageViews<RHI::DeviceBufferView, BufferView>(bufferViews, D3D12_UAV_DIMENSION_BUFFER);
                     break;
                 }
             default:
@@ -498,13 +513,13 @@ namespace AZ
 
         void ShaderResourceGroupPool::UpdateUnboundedImagesDescTable(
             DescriptorTable descriptorTable,
-            const RHI::ShaderResourceGroupData& groupData,
+            const RHI::DeviceShaderResourceGroupData& groupData,
             uint32_t shaderInputIndex,
             RHI::ShaderInputImageAccess imageAccess,
             RHI::ShaderInputImageType imageType)
         {
             const RHI::ShaderInputImageUnboundedArrayIndex imageUnboundedArrayInputIndex(shaderInputIndex);
-            AZStd::span<const RHI::ConstPtr<RHI::ImageView>> imageViews =
+            AZStd::span<const RHI::ConstPtr<RHI::DeviceImageView>> imageViews =
                 groupData.GetImageViewUnboundedArray(imageUnboundedArrayInputIndex);
 
             if (imageViews.empty())
@@ -520,12 +535,12 @@ namespace AZ
             {
             case D3D12_DESCRIPTOR_RANGE_TYPE_SRV:
                 {
-                    descriptorHandles = GetSRVsFromImageViews<RHI::ImageView, ImageView>(imageViews, ConvertSRVDimension(imageType));
+                    descriptorHandles = GetSRVsFromImageViews<RHI::DeviceImageView, ImageView>(imageViews, ConvertSRVDimension(imageType));
                     break;
                 }
             case D3D12_DESCRIPTOR_RANGE_TYPE_UAV:
                 {
-                    descriptorHandles = GetUAVsFromImageViews<RHI::ImageView, ImageView>(imageViews, ConvertUAVDimension(imageType));
+                    descriptorHandles = GetUAVsFromImageViews<RHI::DeviceImageView, ImageView>(imageViews, ConvertUAVDimension(imageType));
                     break;
                 }
             default:
@@ -535,113 +550,6 @@ namespace AZ
 
             m_descriptorContext->UpdateDescriptorTableRange(
                 descriptorTable, descriptorHandles.data(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        }
-
-        RHI::ResultCode ShaderResourceGroupPool::UpdateDescriptorTableAfterCompaction(
-            RHI::ShaderResourceGroup& groupBase, const RHI::ShaderResourceGroupData& groupData)
-        {
-            // Since we are trying to compact we will re-create all the descriptor tables and re-update them all
-            ShaderResourceGroup& group = static_cast<ShaderResourceGroup&>(groupBase);
-             
-            if (m_viewsDescriptorTableSize)
-            {
-                group.m_viewsDescriptorTable = m_descriptorContext->CreateDescriptorTable(
-                    D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, m_viewsDescriptorTableRingSize, &group);
-
-                if (!group.m_viewsDescriptorTable.IsValid())
-                {
-                    AZ_Assert(
-                        false,
-                        "Descriptor heap ran out of memory. Please consider increasing number of handles allowed for the second value"
-                        "of DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV within platformlimits.azasset file for dx12.");
-                    return RHI::ResultCode::OutOfMemory;
-                }
-
-                CacheGpuHandlesForViews(group);
-
-                const DescriptorTable descriptorTable(
-                    group.m_viewsDescriptorTable.GetOffset() + group.m_compiledDataIndex * m_viewsDescriptorTableSize,
-                        static_cast<uint16_t>(m_viewsDescriptorTableSize));
-
-                bool forceUpdate = true;
-                UpdateViewsDescriptorTable(descriptorTable, groupBase, groupData, forceUpdate);
-            }
-
-            if (m_unboundedArrayCount)
-            {
-                //Reset all the old descriptor tables as the previous heap is gone. 
-                for (uint32_t unboundedArrayindex = 0; unboundedArrayindex < (ShaderResourceGroupCompiledData::MaxUnboundedArrays * RHI::Limits::Device::FrameCountMax); ++unboundedArrayindex)
-                {
-                    group.m_unboundedDescriptorTables[unboundedArrayindex] = DescriptorTable{};
-                }
-
-                const RHI::ShaderResourceGroupLayout& groupLayout = *groupData.GetLayout();
-                uint32_t shaderInputIndex = 0;
-
-                // process buffer unbounded arrays
-                for (const RHI::ShaderInputBufferUnboundedArrayDescriptor& shaderInputBufferUnboundedArray : groupLayout.GetShaderInputListForBufferUnboundedArrays())
-                {
-                    const RHI::ShaderInputBufferUnboundedArrayIndex bufferUnboundedArrayInputIndex(shaderInputIndex);
-                    AZStd::span<const RHI::ConstPtr<RHI::BufferView>> bufferViews = groupData.GetBufferViewUnboundedArray(bufferUnboundedArrayInputIndex);
-
-                    uint32_t tableIndex = shaderInputIndex * RHI::Limits::Device::FrameCountMax + group.m_compiledDataIndex;
-                    if (!bufferViews.empty())
-                    {
-                        group.m_unboundedDescriptorTables[tableIndex] = m_descriptorContext->CreateDescriptorTable(
-                            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, static_cast<uint32_t>(bufferViews.size()), &group);
-
-                        if (!group.m_unboundedDescriptorTables[tableIndex].IsValid())
-                        {
-                            AZ_Assert(
-                                false,
-                                "Descriptor heap ran out of memory. Please consider increasing number of handles allowed for the second value"
-                                "of DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV within platformlimits.azasset file for dx12.");
-                            return RHI::ResultCode::OutOfMemory;
-                        }
-
-                        ShaderResourceGroupCompiledData& compiledData = group.m_compiledData[group.m_compiledDataIndex];
-                        compiledData.m_gpuUnboundedArraysDescriptorHandles[shaderInputIndex] = m_descriptorContext->GetGpuPlatformHandleForTable(group.m_unboundedDescriptorTables[tableIndex]);
-
-                        const DescriptorTable descriptorTable(
-                            group.m_unboundedDescriptorTables[tableIndex].GetOffset(), static_cast<uint16_t>(bufferViews.size()));
-                        UpdateUnboundedBuffersDescTable(descriptorTable, groupData, shaderInputIndex, shaderInputBufferUnboundedArray.m_access);
-                    }
-                    shaderInputIndex++;
-                }
-
-                // process image unbounded arrays
-                for (const RHI::ShaderInputImageUnboundedArrayDescriptor& shaderInputImageUnboundedArray :
-                     groupLayout.GetShaderInputListForImageUnboundedArrays())
-                {
-                    const RHI::ShaderInputImageUnboundedArrayIndex imageUnboundedArrayInputIndex(shaderInputIndex);
-                    AZStd::span<const RHI::ConstPtr<RHI::ImageView>> imageViews =
-                        groupData.GetImageViewUnboundedArray(imageUnboundedArrayInputIndex);
-
-                    uint32_t tableIndex = shaderInputIndex * RHI::Limits::Device::FrameCountMax + group.m_compiledDataIndex;
-                    if (!imageViews.empty())
-                    {
-                        group.m_unboundedDescriptorTables[tableIndex] = m_descriptorContext->CreateDescriptorTable(
-                            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, static_cast<uint32_t>(imageViews.size()), &group);
-
-                        if (!group.m_unboundedDescriptorTables[tableIndex].IsValid())
-                        {
-                            AZ_Assert(
-                                false,
-                                "Descriptor heap ran out of memory. Please consider increasing number of handles allowed for the second value"
-                                "of DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV within platformlimits.azasset file for dx12.");
-                            return RHI::ResultCode::OutOfMemory;
-                        }
-
-                        ShaderResourceGroupCompiledData& compiledData = group.m_compiledData[group.m_compiledDataIndex];
-                        compiledData.m_gpuUnboundedArraysDescriptorHandles[shaderInputIndex] = m_descriptorContext->GetGpuPlatformHandleForTable(group.m_unboundedDescriptorTables[tableIndex]);
-
-                        const DescriptorTable descriptorTable(group.m_unboundedDescriptorTables[tableIndex].GetOffset(), static_cast<uint16_t>(imageViews.size()));
-                        UpdateUnboundedImagesDescTable(descriptorTable, groupData, shaderInputIndex, shaderInputImageUnboundedArray.m_access, shaderInputImageUnboundedArray.m_type);
-                    }
-                    shaderInputIndex++;
-                }
-            }
-            return RHI::ResultCode::Success;
         }
 
         void ShaderResourceGroupPool::OnFrameEnd()

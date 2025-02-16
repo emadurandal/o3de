@@ -36,16 +36,26 @@ namespace O3DE::ProjectManager
         m_workerThread.wait();
     }
 
-    void DownloadController::AddObjectDownload(const QString& objectName, DownloadObjectType objectType)
+    void DownloadController::AddObjectDownload(const QString& objectName, const QString& destinationPath, DownloadObjectType objectType)
     {
-        m_objects.push_back({ objectName, objectType });
+        m_objects.push_back({ objectName, destinationPath, objectType });
         emit ObjectDownloadAdded(objectName, objectType);
 
         if (m_objects.size() == 1)
         {
-            m_worker->SetObjectToDownload(m_objects.front().m_objectName, objectType, false);
+            m_worker->SetObjectToDownload(m_objects.front().m_objectName, destinationPath, objectType, false);
             m_workerThread.start();
         }
+    }
+
+    bool DownloadController::IsDownloadingObject(const QString& objectName, DownloadObjectType objectType)
+    {
+        auto findResult = AZStd::ranges::find_if(m_objects,
+            [objectName, objectType](const DownloadableObject& object)
+            {
+                return (object.m_objectType == objectType && object.m_objectName == objectName);
+            });
+        return findResult != m_objects.end();
     }
 
     void DownloadController::CancelObjectDownload(const QString& objectName, DownloadObjectType objectType)
@@ -113,7 +123,7 @@ namespace O3DE::ProjectManager
         if (!m_objects.empty())
         {
             const DownloadableObject& nextObject = m_objects.front();
-            emit StartObjectDownload(nextObject.m_objectName, nextObject.m_objectType, true);
+            emit StartObjectDownload(nextObject.m_objectName, nextObject.m_destinationPath, nextObject.m_objectType, true);
         }
         else
         {

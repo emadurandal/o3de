@@ -28,7 +28,7 @@
 
 namespace EMStudio
 {
-    AZ_CLASS_ALLOCATOR_IMPL(AtomRenderPlugin, EMotionFX::EditorAllocator, 0);
+    AZ_CLASS_ALLOCATOR_IMPL(AtomRenderPlugin, EMotionFX::EditorAllocator);
 
     AtomRenderPlugin::AtomRenderPlugin()
         : DockWidgetPlugin()
@@ -119,6 +119,7 @@ namespace EMStudio
         SetupManipulators();
 
         m_picking = AZStd::make_unique<EMotionFX::Picking>();
+        m_picking->SetRenderFlags(GetRenderOptions()->GetRenderFlags());
 
         SetupMetrics();
 
